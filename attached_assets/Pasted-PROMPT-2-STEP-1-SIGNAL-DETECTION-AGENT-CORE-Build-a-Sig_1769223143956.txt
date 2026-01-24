@@ -1,0 +1,312 @@
+PROMPT 2 — STEP 1: SIGNAL DETECTION AGENT (CORE)
+Build a Signal Detection Agent that ingests daily research output
+
+(from tools like Manus or similar agentic research sources).
+
+This agent does NOT look for AI interest.
+
+It looks for coordination + turnover pain in SMB operators.
+
+Target ICP:
+
+- Founders, Operators, COOs, Heads of Ops, Revenue Owners
+
+- 5–100 person companies
+
+- US-based
+
+- Growing faster than systems
+
+- Paying close to the money
+
+- Exhausted by coordination + fragile human roles
+
+Primary pain signals (implicit or explicit):
+
+- “Busy all day but nothing moved”
+
+- Everything depends on me
+
+- Follow-ups falling through cracks
+
+- Missed calls / slow responses
+
+- Turnover, rehiring fatigue
+
+- Lost roles causing breakdown
+
+- Work stops when people stop
+
+Strict exclusions:
+
+- Enterprise procurement language
+
+- Governance-first questions
+
+- AI curiosity without pain
+
+- Tool comparisons
+
+- People who want to train or manage agents
+
+- Meta-agent or orchestration enthusiasm
+
+Output structured JSON only:
+
+{
+
+  person_or_company_name,
+
+  role,
+
+  industry,
+
+  company_size_estimate,
+
+  location,
+
+  pain_quote,
+
+  pain_summary_in_plain_language,
+
+  source_url,
+
+  date_detected
+
+}
+
+This agent prioritizes first-person language and lived experience.
+
+Goal is emotional obviousness, not volume.
+
+
+PROMPT 3 — STEP 2: LEAD SCORING + AI EMPLOYEE ROUTING
+Implement Lead Scoring and Routing logic on top of Signal Detection output.
+
+Scoring model (clamp to 1–5):
+
+Base:
+
+- Every qualified signal starts at 2
+
+Add:
+
++1 Coordination overload (follow-ups, handoffs, dependency)
+
++1 Turnover / role fragility (rehiring, quitting, ghosting)
+
++1 Inbound friction (missed calls, slow replies)
+
++1 Revenue proximity (leads, deals, pipeline mentioned)
+
+Score meanings:
+
+5 = emotionally obvious buyer
+
+3–4 = strong follow-up candidate
+
+1–2 = content insight only
+
+Route each lead to ONE primary AI Employee using hard rules:
+
+1) Missed Call Follow-Up
+
+   - Missed calls, voicemail complaints, after-hours loss
+
+2) Appointment Reminder + Rescheduler
+
+   - No-shows, cancellations, calendar chaos
+
+3) Lead Reactivation Agent
+
+   - Dormant leads, CRM rot, paid leads not closed
+
+4) Outbound Prospector
+
+   - Manual outbound, pipeline creation fatigue
+
+5) Email Automation Specialist
+
+   - Inbox overload, forgotten replies, manual follow-ups
+
+6) Support Response Agent (Omni-Channel)
+
+   - Customer complaints, response delays, channel chaos
+
+7) Call Feedback (MEDDIC) & Follow-Up Engine
+
+   - Calls happening but deals stalling, founder reviewing calls
+
+8) Marketing Coordinator
+
+   - Inconsistent posting, founder doing marketing themselves
+
+Tie-breakers:
+
+- Revenue-impacting agents win
+
+- Inbound beats outbound
+
+- Fastest relief wins
+
+Enrich each lead with:
+
+{
+
+  confidence_score,
+
+  recommended_ai_employee_role,
+
+  agentlayeros_employee_name,
+
+  why_this_ai_employee_replaces_or_backfills_work
+
+}
+
+
+PROMPT 4 — STEP 2 OUTPUT: GOOGLE SHEETS (OUTREACH)
+Create a Google Sheets integration that appends one row per qualified lead.
+
+Sheet columns:
+
+- Date detected
+
+- Lead / Company name
+
+- Role
+
+- Industry
+
+- Company size estimate
+
+- Location
+
+- Raw pain quote
+
+- Plain-language pain summary
+
+- Confidence score (1–5)
+
+- Recommended AI Employee
+
+- Why this AI Employee fits
+
+- Source URL
+
+This sheet is used for personalized outbound outreach.
+
+No deduping required in v1.
+
+
+PROMPT 5 — STEP 3: CONTENTLAYEROS INGESTION
+Integrate this system with our internal tool: ContentLayerOS.
+
+For each qualified signal, generate an Insight Record
+
+separate from the Lead Record.
+
+Insight Record schema:
+
+{
+
+  insight_theme,
+
+  raw_pain_language,
+
+  normalized_problem,
+
+  operator_emotion,
+
+  agentlayeros_angle,
+
+  suggested_post_angles: [
+
+    "contrarian",
+
+    "story",
+
+    "lesson",
+
+    "quiet win"
+
+  ],
+
+  source_type,
+
+  date_detected
+
+}
+
+Create an ingestion endpoint:
+
+POST /api/content-layer/ingest
+
+Payload includes:
+
+- run_id
+
+- list of Insight Records
+
+- applied_contexts: ["ICP", "Positioning"]
+
+- source: "SignalLayerOS"
+
+- cadence: "weekly"
+
+
+PROMPT 6 — WEEKLY CONTENT FLOW (CONTENTLAYEROS)
+Inside ContentLayerOS, enable a Weekly Run workflow.
+
+Weekly Run behavior:
+
+- Pull last 7 days of Insight Records
+
+- Cluster by:
+
+  - coordination pain
+
+  - turnover fatigue
+
+  - inbound friction
+
+- Generate:
+
+  - 2 LinkedIn drafts
+
+  - 2 X (Twitter) drafts
+
+Support toggles:
+
+- ICP context
+
+- Positioning context
+
+- Be Contrary
+
+Preserve raw language.
+
+Do not over-polish.
+
+Content should sound inevitable, not promotional.
+
+
+PROMPT 7 — SYSTEM PRINCIPLES (LOCK THESE)
+System rules (non-negotiable):
+
+- Signal detection is pain-based, not AI-based
+
+- AI Employee language appears only in routing and recommendation
+
+- No user-facing configuration
+
+- Fewer, better leads > volume
+
+- Relief > intelligence
+
+- Reliability > novelty
+
+- Execution > explanation
+
+This system is designed to surface buyers
+
+before they know they want AI Employees.
