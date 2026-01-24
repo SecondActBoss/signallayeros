@@ -26,6 +26,7 @@ export const signalSchema = z.object({
   painSummary: z.string(),
   sourceUrl: z.union([z.string().url(), z.literal("")]).optional(),
   dateDetected: z.string(),
+  source: z.string().optional(),
   createdAt: z.string()
 });
 

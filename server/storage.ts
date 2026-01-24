@@ -16,6 +16,7 @@ export interface IStorage {
   getRecentSignals(limit: number): Promise<Signal[]>;
   getSignal(id: string): Promise<Signal | undefined>;
   createSignal(signal: InsertSignal): Promise<Signal>;
+  findDuplicateSignal(personOrCompanyName: string, painQuote: string): Promise<Signal | undefined>;
   
   // Leads
   getLeads(): Promise<ScoredLead[]>;
@@ -77,6 +78,22 @@ export class MemStorage implements IStorage {
     };
     this.signals.set(id, signal);
     return signal;
+  }
+
+  async findDuplicateSignal(personOrCompanyName: string, painQuote: string): Promise<Signal | undefined> {
+    const normalizedName = personOrCompanyName.toLowerCase().trim();
+    const normalizedQuote = painQuote.toLowerCase().trim();
+    
+    const signals = Array.from(this.signals.values());
+    for (const signal of signals) {
+      if (
+        signal.personOrCompanyName.toLowerCase().trim() === normalizedName &&
+        signal.painQuote.toLowerCase().trim() === normalizedQuote
+      ) {
+        return signal;
+      }
+    }
+    return undefined;
   }
 
   // Leads

@@ -103,6 +103,87 @@ export async function registerRoutes(
     }
   });
 
+  // External automated ingestion (for Manus, etc.)
+  app.post("/api/ingest/external", async (req, res) => {
+    try {
+      // Validate API key
+      const apiKey = req.headers["x-api-key"];
+      const expectedKey = process.env.INGEST_API_KEY;
+      
+      if (!expectedKey) {
+        console.error("INGEST_API_KEY not configured");
+        res.status(500).json({ message: "Ingestion endpoint not configured" });
+        return;
+      }
+      
+      if (!apiKey || apiKey !== expectedKey) {
+        res.status(401).json({ message: "Invalid or missing API key" });
+        return;
+      }
+      
+      const { signals } = bulkSignalImportSchema.parse(req.body);
+      const sourceName = (req.headers["x-source"] as string) || "Manus";
+      
+      let signalsCreated = 0;
+      let duplicatesSkipped = 0;
+      let leadsCreated = 0;
+      let insightsCreated = 0;
+      const errors: string[] = [];
+      
+      for (const signalData of signals) {
+        try {
+          // Check for duplicates (idempotency)
+          const existing = await storage.findDuplicateSignal(
+            signalData.personOrCompanyName,
+            signalData.painQuote
+          );
+          
+          if (existing) {
+            duplicatesSkipped++;
+            continue;
+          }
+          
+          // Create signal with source
+          const signalWithSource = {
+            ...signalData,
+            source: sourceName,
+          };
+          const signal = await storage.createSignal(signalWithSource);
+          signalsCreated++;
+          
+          // Score and route to create lead
+          const leadData = scoreAndRouteSignal(signal);
+          const lead = await storage.createLead(leadData);
+          leadsCreated++;
+          
+          // Generate insight for content
+          const insightData = generateInsight(signal, lead);
+          await storage.createInsight(insightData);
+          insightsCreated++;
+        } catch (e) {
+          errors.push(`Failed to process signal for ${signalData.personOrCompanyName}: ${e}`);
+        }
+      }
+      
+      console.log(`[External Ingest] Source: ${sourceName}, Created: ${signalsCreated}, Duplicates: ${duplicatesSkipped}`);
+      
+      res.json({ 
+        signalsCreated, 
+        duplicatesSkipped,
+        leadsCreated, 
+        insightsCreated,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid signal data", errors: error.errors });
+      } else {
+        console.error("External ingestion error:", error);
+        res.status(500).json({ message: "Failed to process signals" });
+      }
+    }
+  });
+
   // Leads
   app.get("/api/leads", async (req, res) => {
     try {

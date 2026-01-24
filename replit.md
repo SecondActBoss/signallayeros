@@ -68,6 +68,18 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
 - `POST /api/signals` - Create single signal (auto-scores and routes)
 - `POST /api/signals/bulk` - Bulk import signals
 
+### External Ingestion (Automated)
+- `POST /api/ingest/external` - Secure endpoint for automated signal ingestion
+  - **Headers Required**:
+    - `X-API-Key`: Must match `INGEST_API_KEY` secret
+    - `X-Source`: Optional, defaults to "Manus"
+  - **Body**: Same JSON schema as bulk import (`{ "signals": [...] }`)
+  - **Features**:
+    - API key authentication
+    - Idempotency (skips duplicates based on name + pain quote)
+    - Logs source for tracking
+  - **Response**: `{ signalsCreated, duplicatesSkipped, leadsCreated, insightsCreated }`
+
 ### Leads
 - `GET /api/leads` - All scored leads
 - `GET /api/leads/recent` - Recent leads (limit 10)
