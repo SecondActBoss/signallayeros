@@ -174,12 +174,12 @@ export default function Ingest() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-lg border bg-muted/30 p-3">
+            <div className="rounded-lg border bg-muted/30 p-3 overflow-hidden">
               <div className="flex items-start gap-2 text-xs text-muted-foreground">
                 <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="font-medium mb-1">Expected JSON format:</p>
-                  <pre className="overflow-x-auto text-xs bg-background/50 p-2 rounded">
+                  <pre className="overflow-x-auto text-xs bg-background/50 p-2 rounded whitespace-pre-wrap break-all">
                     {exampleJson}
                   </pre>
                 </div>
