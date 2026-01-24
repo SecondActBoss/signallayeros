@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -19,6 +20,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Users,
   Search,
@@ -174,6 +184,8 @@ export default function Leads() {
   const [searchQuery, setSearchQuery] = useState("");
   const [scoreFilter, setScoreFilter] = useState<string>("all");
   const [aiEmployeeFilter, setAiEmployeeFilter] = useState<string>("all");
+  const [spreadsheetId, setSpreadsheetId] = useState("");
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: leads, isLoading } = useQuery<ScoredLead[]>({
@@ -181,21 +193,22 @@ export default function Leads() {
   });
 
   const exportMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/leads/export");
+    mutationFn: async (sheetId: string) => {
+      const response = await apiRequest("POST", "/api/leads/export", { spreadsheetId: sheetId });
       return response;
     },
     onSuccess: (data: any) => {
+      setExportDialogOpen(false);
       toast({
         title: "Export Complete",
-        description: `${data.exportedCount} leads prepared for Google Sheets export.`,
+        description: data.message || `${data.exportedCount} leads exported to Google Sheets.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Export Failed",
-        description: "Unable to export leads. Please try again.",
+        description: error.message || "Unable to export leads. Please try again.",
         variant: "destructive",
       });
     },
@@ -278,14 +291,56 @@ export default function Leads() {
             ))}
           </SelectContent>
         </Select>
-        <Button
-          onClick={() => exportMutation.mutate()}
-          disabled={exportMutation.isPending || !leads?.length}
-          data-testid="button-export-leads"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          {exportMutation.isPending ? "Exporting..." : "Export to Sheets"}
-        </Button>
+        <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+          <DialogTrigger asChild>
+            <Button
+              disabled={!leads?.length}
+              data-testid="button-export-leads"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export to Sheets
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Export to Google Sheets</DialogTitle>
+              <DialogDescription>
+                Enter your Google Sheet ID to export leads. You can find the ID in your spreadsheet URL:
+                <code className="block mt-2 p-2 bg-muted rounded text-xs break-all">
+                  docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit
+                </code>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="spreadsheet-id">Spreadsheet ID</Label>
+                <Input
+                  id="spreadsheet-id"
+                  placeholder="e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                  value={spreadsheetId}
+                  onChange={(e) => setSpreadsheetId(e.target.value)}
+                  data-testid="input-spreadsheet-id"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setExportDialogOpen(false)}
+                data-testid="button-cancel-export"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => exportMutation.mutate(spreadsheetId)}
+                disabled={exportMutation.isPending || !spreadsheetId.trim()}
+                data-testid="button-confirm-export"
+              >
+                {exportMutation.isPending ? "Exporting..." : "Export Leads"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {isLoading ? (

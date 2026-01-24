@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { scoreAndRouteSignal, generateInsight, generateContentDrafts } from "./scoring";
 import { insertSignalSchema, bulkSignalImportSchema } from "@shared/schema";
 import { z } from "zod";
+import { appendToSheet } from "./googleSheets";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -205,6 +206,13 @@ export async function registerRoutes(
 
   app.post("/api/leads/export", async (req, res) => {
     try {
+      const { spreadsheetId } = req.body;
+      
+      if (!spreadsheetId) {
+        res.status(400).json({ message: "Spreadsheet ID is required" });
+        return;
+      }
+      
       const leads = await storage.getLeads();
       const unexported = leads.filter((l) => !l.exportedToSheets);
       
@@ -213,28 +221,51 @@ export async function registerRoutes(
         return;
       }
       
-      // Mark as exported (in a real implementation, this would also push to Google Sheets)
+      // Format rows for Google Sheets (with headers if first export)
+      const headers = [
+        "Date Detected",
+        "Company/Person",
+        "Role",
+        "Industry",
+        "Company Size",
+        "Location",
+        "Pain Quote",
+        "Pain Summary",
+        "Confidence Score",
+        "AI Employee",
+        "Why This AI Employee",
+        "Source URL"
+      ];
+      
+      const rows = unexported.map((lead) => [
+        lead.dateDetected,
+        lead.personOrCompanyName,
+        lead.role,
+        lead.industry,
+        lead.companySizeEstimate,
+        lead.location,
+        lead.painQuote,
+        lead.painSummary,
+        String(lead.confidenceScore),
+        lead.aiEmployeeName,
+        lead.whyThisAIEmployee,
+        lead.sourceUrl || ""
+      ]);
+      
+      // Check if this is likely the first export (add headers)
+      const allExported = leads.filter((l) => l.exportedToSheets);
+      const dataToAppend = allExported.length === 0 ? [headers, ...rows] : rows;
+      
+      // Push to Google Sheets
+      await appendToSheet(spreadsheetId, dataToAppend);
+      
+      // Mark as exported
       await storage.markLeadsExported(unexported.map((l) => l.id));
       
-      // Format for Google Sheets
-      const sheetsData = unexported.map((lead) => ({
-        dateDetected: lead.dateDetected,
-        leadCompanyName: lead.personOrCompanyName,
-        role: lead.role,
-        industry: lead.industry,
-        companySizeEstimate: lead.companySizeEstimate,
-        location: lead.location,
-        rawPainQuote: lead.painQuote,
-        painSummary: lead.painSummary,
-        confidenceScore: lead.confidenceScore,
-        recommendedAIEmployee: lead.aiEmployeeName,
-        whyThisAIEmployee: lead.whyThisAIEmployee,
-        sourceUrl: lead.sourceUrl || "",
-      }));
-      
-      res.json({ exportedCount: unexported.length, sheetsData });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to export leads" });
+      res.json({ exportedCount: unexported.length, message: `Exported ${unexported.length} leads to Google Sheets` });
+    } catch (error: any) {
+      console.error("Export error:", error);
+      res.status(500).json({ message: error.message || "Failed to export leads" });
     }
   });
 

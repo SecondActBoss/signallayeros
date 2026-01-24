@@ -83,7 +83,11 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
 ### Leads
 - `GET /api/leads` - All scored leads
 - `GET /api/leads/recent` - Recent leads (limit 10)
-- `POST /api/leads/export` - Export to Google Sheets format
+- `POST /api/leads/export` - Export leads directly to Google Sheets
+  - **Body**: `{ "spreadsheetId": "your-sheet-id" }`
+  - Requires Google Sheets integration to be connected
+  - Automatically adds headers on first export
+  - Marks exported leads to avoid duplicates
 
 ### Content
 - `GET /api/insights` - All content insights
