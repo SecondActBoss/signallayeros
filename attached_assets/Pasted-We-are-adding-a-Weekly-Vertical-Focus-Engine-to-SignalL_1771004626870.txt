@@ -1,0 +1,78 @@
+We are adding a Weekly Vertical Focus Engine to SignalLayerOS.
+
+Goal:
+Automatically select the highest-leverage vertical for focused GTM activity each week.
+
+Definition of Weekly Vertical Focus:
+
+From ranked industries and cluster detection data:
+
+Select the vertical that:
+- Has the highest totalPainScore in last 30 days
+- AND has growthRate > 0.3
+- AND has avgPainScore >= 3.5
+
+If no vertical meets all conditions:
+Fallback to highest totalPainScore overall.
+
+Backend Requirements:
+
+1. Create new endpoint:
+GET /api/verticals/focus
+
+2. Logic:
+- Pull ranked vertical data
+- Pull cluster data
+- Apply focus selection rules
+- Identify dominantPainSignal
+- Identify most frequent routed AI Employee in that vertical
+- Pull top 3 highest-score leads from that vertical
+- Extract their pain quotes
+
+3. Generate structured response:
+
+{
+  industry: "Veterinary Clinics",
+  reasonSelected: "Highest pain density with strong growth in inbound friction",
+  dominantPainSignal: "Inbound Friction",
+  primaryAIAgentDemand: "Inbound Revenue Agent",
+  topPainQuotes: [
+    "We're missing calls constantly.",
+    "Appointments fall through the cracks.",
+    "Staff turnover is killing response times."
+  ],
+  suggestedBlueprintTitle: "AI Staffing Blueprint for Independent Veterinary Clinics",
+  suggestedContentAngles: [
+    "Inbound revenue leakage",
+    "Staff burnout from phone chaos",
+    "Why missed calls are silent churn"
+  ]
+}
+
+Frontend Requirements:
+
+1. Add new Dashboard section:
+"Weekly Vertical Focus"
+
+2. Display:
+   - Industry name
+   - Why selected
+   - Primary AI Employee
+   - Suggested Blueprint Title
+   - 3 Pain Quotes
+   - CTA buttons:
+        - Generate Blueprint
+        - Generate Content
+        - Export High-Intent Leads
+
+3. When "Generate Content" is clicked:
+   Automatically pass industry + pain quotes into ContentLayerOS as vertical focus context.
+
+Constraints:
+- Must use existing in-memory data
+- Must not break Manus ingestion
+- Must not increase dashboard load time significantly
+- Clean dark UI consistent with existing components
+
+Purpose:
+This turns SignalLayerOS into a weekly GTM decision engine instead of a passive analytics tool.

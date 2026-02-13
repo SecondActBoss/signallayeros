@@ -16,6 +16,13 @@ import {
   Target,
   ArrowUp,
   X,
+  Crown,
+  Bot,
+  BookOpen,
+  Quote,
+  Sparkles,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
@@ -38,6 +45,20 @@ type VerticalCluster = {
   avgScore: number;
   score5Count: number;
   clusterStrength: "High" | "Medium" | "Emerging";
+};
+
+type WeeklyFocus = {
+  industry: string;
+  reasonSelected: string;
+  dominantPainSignal: string;
+  primaryAIAgentDemand: string;
+  topPainQuotes: string[];
+  suggestedBlueprintTitle: string;
+  suggestedContentAngles: string[];
+  totalLeads: number;
+  avgScore: number;
+  growthRate: number;
+  generatedAt: string;
 };
 
 function StatCard({
@@ -129,6 +150,216 @@ function painSignalColor(signal: string): string {
     case "Revenue Proximity": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
     default: return "bg-muted text-muted-foreground";
   }
+}
+
+function WeeklyVerticalFocusPanel() {
+  const queryClient = useQueryClient();
+
+  const { data: focus, isLoading } = useQuery<WeeklyFocus | null>({
+    queryKey: ["/api/verticals/weekly-focus"],
+  });
+
+  const contentMutation = useMutation({
+    mutationFn: async () => {
+      if (focus) {
+        await apiRequest("POST", "/api/verticals/focus", { industry: focus.industry });
+      }
+      const res = await apiRequest("POST", "/api/content-runs/generate");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-runs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/verticals/focus"] });
+    },
+  });
+
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [spreadsheetId, setSpreadsheetId] = useState("");
+
+  const exportMutation = useMutation({
+    mutationFn: async (sheetId: string) => {
+      const res = await apiRequest("POST", "/api/leads/export", { spreadsheetId: sheetId });
+      return res.json();
+    },
+    onSuccess: () => {
+      setExportDialogOpen(false);
+      setSpreadsheetId("");
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="border-primary/20">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-5 w-48" />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!focus) {
+    return (
+      <Card className="border-dashed border-muted-foreground/30">
+        <CardContent className="flex flex-col items-center justify-center py-10 text-center">
+          <Crown className="h-12 w-12 text-muted-foreground/20 mb-4" />
+          <p className="text-sm font-medium text-muted-foreground">No Weekly Focus Available</p>
+          <p className="text-xs text-muted-foreground/70 mt-1 max-w-sm">
+            Ingest signals to enable automated vertical selection. The engine needs lead data to identify your highest-leverage vertical.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent" data-testid="weekly-focus-panel">
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Crown className="h-5 w-5 text-primary" />
+          <CardTitle className="text-base font-semibold">Weekly Vertical Focus</CardTitle>
+          <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">
+            Command Center
+          </Badge>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {new Date(focus.generatedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+        </span>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight" data-testid="text-focus-industry">{focus.industry}</h2>
+            <p className="text-sm text-muted-foreground mt-1" data-testid="text-focus-reason">{focus.reasonSelected}</p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <Badge variant="outline" className={`text-xs ${painSignalColor(focus.dominantPainSignal)}`}>
+              {focus.dominantPainSignal}
+            </Badge>
+            <Badge variant="outline" className="text-xs">
+              {focus.totalLeads} leads
+            </Badge>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+            <div className="flex items-center gap-2 mb-2">
+              <Bot className="h-4 w-4 text-primary" />
+              <span className="text-xs font-medium text-muted-foreground">Most Demanded AI Employee</span>
+            </div>
+            <p className="text-sm font-semibold" data-testid="text-focus-ai-agent">{focus.primaryAIAgentDemand}</p>
+          </div>
+
+          <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+            <div className="flex items-center gap-2 mb-2">
+              <BookOpen className="h-4 w-4 text-primary" />
+              <span className="text-xs font-medium text-muted-foreground">Suggested Blueprint</span>
+            </div>
+            <p className="text-sm font-semibold" data-testid="text-focus-blueprint">{focus.suggestedBlueprintTitle}</p>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+          <div className="flex items-center gap-2 mb-3">
+            <Quote className="h-4 w-4 text-primary" />
+            <span className="text-xs font-medium text-muted-foreground">Top Pain Quotes</span>
+          </div>
+          <div className="space-y-2">
+            {focus.topPainQuotes.map((quote, idx) => (
+              <p key={idx} className="text-sm italic text-muted-foreground pl-3 border-l-2 border-primary/30" data-testid={`text-pain-quote-${idx}`}>
+                "{quote}"
+              </p>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-xs font-medium text-muted-foreground">Suggested Content Angles</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {focus.suggestedContentAngles.map((angle, idx) => (
+              <Badge key={idx} variant="outline" className="text-xs" data-testid={`badge-content-angle-${idx}`}>
+                {angle}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 pt-2">
+          <Button
+            size="sm"
+            onClick={() => contentMutation.mutate()}
+            disabled={contentMutation.isPending}
+            data-testid="button-generate-content"
+          >
+            {contentMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            Generate Content
+          </Button>
+
+          {!exportDialogOpen ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExportDialogOpen(true)}
+              data-testid="button-export-leads"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export High-Intent Leads
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Google Sheet ID"
+                value={spreadsheetId}
+                onChange={(e) => setSpreadsheetId(e.target.value)}
+                className="h-8 px-2 text-xs rounded border border-border bg-background w-48"
+                data-testid="input-export-sheet-id"
+              />
+              <Button
+                size="sm"
+                variant="default"
+                className="h-8 text-xs"
+                onClick={() => exportMutation.mutate(spreadsheetId)}
+                disabled={!spreadsheetId || exportMutation.isPending}
+                data-testid="button-export-confirm"
+              >
+                {exportMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Export"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs"
+                onClick={() => { setExportDialogOpen(false); setSpreadsheetId(""); }}
+                data-testid="button-export-cancel"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {contentMutation.isSuccess && (
+          <p className="text-xs text-emerald-500" data-testid="text-content-success">
+            Content generated with {focus.industry} vertical focus. Check the Content page for drafts.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function clusterStrengthBadge(strength: "High" | "Medium" | "Emerging") {
@@ -437,6 +668,8 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      <WeeklyVerticalFocusPanel />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

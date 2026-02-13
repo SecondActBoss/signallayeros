@@ -470,6 +470,159 @@ export async function registerRoutes(
     }
   });
 
+  // Weekly Vertical Focus Engine
+  app.get("/api/verticals/weekly-focus", async (req, res) => {
+    try {
+      const leads = await storage.getLeads();
+      const now = Date.now();
+      const day = 24 * 60 * 60 * 1000;
+      const cutoff30d = new Date(now - 30 * day);
+      const cutoff14d = new Date(now - 14 * day);
+      const cutoff28d = new Date(now - 28 * day);
+
+      if (leads.length === 0) {
+        res.json(null);
+        return;
+      }
+
+      const industryMap: Record<string, {
+        leads30d: ScoredLead[];
+        leadsAll: ScoredLead[];
+        windowA: ScoredLead[];
+        windowB: ScoredLead[];
+      }> = {};
+
+      for (const lead of leads) {
+        const industry = lead.industry || "Unknown";
+        if (!industryMap[industry]) {
+          industryMap[industry] = { leads30d: [], leadsAll: [], windowA: [], windowB: [] };
+        }
+        const entry = industryMap[industry];
+        entry.leadsAll.push(lead);
+        const created = new Date(lead.createdAt);
+        if (created >= cutoff30d) entry.leads30d.push(lead);
+        if (created >= cutoff14d) entry.windowA.push(lead);
+        else if (created >= cutoff28d) entry.windowB.push(lead);
+      }
+
+      type VerticalCandidate = {
+        industry: string;
+        totalPainScore30d: number;
+        avgPainScore30d: number;
+        growthRate: number;
+        leads30d: ScoredLead[];
+        leadsAll: ScoredLead[];
+      };
+
+      const candidates: VerticalCandidate[] = [];
+      for (const [industry, data] of Object.entries(industryMap)) {
+        const totalPainScore30d = data.leads30d.reduce((s, l) => s + l.confidenceScore, 0);
+        const avgPainScore30d = data.leads30d.length > 0
+          ? Math.round((totalPainScore30d / data.leads30d.length) * 10) / 10
+          : 0;
+        const countA = data.windowA.length;
+        const countB = data.windowB.length;
+        const growthRate = (countA - countB) / Math.max(countB, 1);
+
+        candidates.push({
+          industry,
+          totalPainScore30d,
+          avgPainScore30d,
+          growthRate: Math.round(growthRate * 100) / 100,
+          leads30d: data.leads30d,
+          leadsAll: data.leadsAll,
+        });
+      }
+
+      let selected = candidates
+        .filter((c) => c.avgPainScore30d >= 3.5 && c.growthRate > 0.3 && c.leads30d.length > 0)
+        .sort((a, b) => b.totalPainScore30d - a.totalPainScore30d)[0];
+
+      if (!selected) {
+        selected = candidates
+          .filter((c) => c.leadsAll.length > 0)
+          .sort((a, b) => {
+            const totalA = a.leadsAll.reduce((s, l) => s + l.confidenceScore, 0);
+            const totalB = b.leadsAll.reduce((s, l) => s + l.confidenceScore, 0);
+            return totalB - totalA;
+          })[0];
+      }
+
+      if (!selected) {
+        res.json(null);
+        return;
+      }
+
+      const relevantLeads = selected.leads30d.length > 0 ? selected.leads30d : selected.leadsAll;
+
+      const painCounts: Record<string, number> = {};
+      const aiEmployeeCounts: Record<string, number> = {};
+      for (const lead of relevantLeads) {
+        if (lead.hasCoordinationOverload) painCounts["Coordination Overload"] = (painCounts["Coordination Overload"] || 0) + 1;
+        if (lead.hasTurnoverFragility) painCounts["Turnover Fragility"] = (painCounts["Turnover Fragility"] || 0) + 1;
+        if (lead.hasInboundFriction) painCounts["Inbound Friction"] = (painCounts["Inbound Friction"] || 0) + 1;
+        if (lead.hasRevenueProximity) painCounts["Revenue Proximity"] = (painCounts["Revenue Proximity"] || 0) + 1;
+        aiEmployeeCounts[lead.aiEmployeeName] = (aiEmployeeCounts[lead.aiEmployeeName] || 0) + 1;
+      }
+
+      const dominantPainSignal = Object.entries(painCounts)
+        .sort((a, b) => b[1] - a[1])[0]?.[0] || "Unknown";
+
+      const primaryAIAgentDemand = Object.entries(aiEmployeeCounts)
+        .sort((a, b) => b[1] - a[1])[0]?.[0] || "Unknown";
+
+      const topLeads = [...relevantLeads]
+        .sort((a, b) => b.confidenceScore - a.confidenceScore)
+        .slice(0, 3);
+      const topPainQuotes = topLeads.map((l) => l.painQuote);
+
+      const painLabel = dominantPainSignal.toLowerCase().replace(/\s+/g, " ");
+      const reasonParts: string[] = [];
+      if (selected.leads30d.length > 0) {
+        reasonParts.push(`Highest pain density (${selected.totalPainScore30d} total score across ${selected.leads30d.length} leads in 30d)`);
+      } else {
+        reasonParts.push(`Highest overall pain density`);
+      }
+      if (selected.growthRate > 0.3) {
+        reasonParts.push(`strong growth (+${Math.round(selected.growthRate * 100)}%)`);
+      }
+      reasonParts.push(`dominant signal: ${painLabel}`);
+      const reasonSelected = reasonParts.join(" with ");
+
+      const suggestedBlueprintTitle = `AI Staffing Blueprint for ${selected.industry}`;
+
+      const contentAngleMap: Record<string, string[]> = {
+        "Coordination Overload": ["Handoff fatigue destroying team velocity", "Why coordination is the hidden tax on growth", "The follow-up trap operators can't escape"],
+        "Turnover Fragility": ["Staff turnover as silent revenue drain", "Why rehiring the same role is a systems problem", "Building roles that don't break when people leave"],
+        "Inbound Friction": ["Inbound revenue leakage from missed opportunities", "Phone chaos and the cost of slow response", "Why missed calls are silent churn"],
+        "Revenue Proximity": ["Pipeline visibility without the manual work", "Revenue at risk from operational friction", "Deals stalling from process bottlenecks"],
+      };
+      const suggestedContentAngles = contentAngleMap[dominantPainSignal] || [
+        `${dominantPainSignal} impact on ${selected.industry}`,
+        `Operator burnout in ${selected.industry}`,
+        `Scaling past manual work in ${selected.industry}`,
+      ];
+
+      res.json({
+        industry: selected.industry,
+        reasonSelected,
+        dominantPainSignal,
+        primaryAIAgentDemand,
+        topPainQuotes,
+        suggestedBlueprintTitle,
+        suggestedContentAngles,
+        totalLeads: relevantLeads.length,
+        avgScore: selected.leads30d.length > 0 ? selected.avgPainScore30d
+          : Math.round((selected.leadsAll.reduce((s, l) => s + l.confidenceScore, 0) / selected.leadsAll.length) * 10) / 10,
+        growthRate: selected.growthRate,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Weekly focus error:", error);
+      res.status(500).json({ message: "Failed to generate weekly focus" });
+    }
+  });
+
   // Focused Vertical
   app.get("/api/verticals/focus", async (req, res) => {
     try {

@@ -110,6 +110,24 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
     - Emerging = growthRate > 1 but lower scores
   - Sorted by strength (High > Medium > Emerging), then avgScore DESC
 
+### Weekly Vertical Focus Engine
+- `GET /api/verticals/weekly-focus` - Automated weekly vertical selection
+  - **Selection Rules** (primary):
+    - Highest totalPainScore in last 30 days
+    - AND growthRate > 0.3
+    - AND avgPainScore >= 3.5
+  - **Fallback**: Highest totalPainScore overall if no vertical meets all conditions
+  - **Response includes**:
+    - `industry` - Selected vertical name
+    - `reasonSelected` - Human-readable explanation
+    - `dominantPainSignal` - Most frequent pain type
+    - `primaryAIAgentDemand` - Most routed AI Employee
+    - `topPainQuotes` - Top 3 highest-score pain quotes
+    - `suggestedBlueprintTitle` - Auto-generated blueprint title
+    - `suggestedContentAngles` - 3 content angle suggestions
+    - `totalLeads`, `avgScore`, `growthRate` - Key metrics
+    - `generatedAt` - Timestamp
+
 ### Focused Vertical
 - `GET /api/verticals/focus` - Get current focused vertical
   - Returns `{ focusedVertical: string | null }`
