@@ -65,7 +65,7 @@ const REVENUE_PATTERNS = [
 
 // AI Employee routing patterns
 const ROUTING_PATTERNS: Record<string, RegExp[]> = {
-  "missed-call-followup": [
+  "inbound-revenue": [
     /missed.+call/i,
     /voicemail/i,
     /after.+hours/i,
@@ -197,13 +197,13 @@ function routeToAIEmployee(signal: Signal, painSignals: {
     
     // Boost score for revenue-impacting agents if revenue proximity detected
     if (painSignals.hasRevenueProximity && 
-        ["missed-call-followup", "lead-reactivation", "outbound-prospector"].includes(employee.id)) {
+        ["inbound-revenue", "lead-reactivation", "outbound-prospector"].includes(employee.id)) {
       score += 2;
     }
     
     // Boost score for inbound agents if inbound friction detected
     if (painSignals.hasInboundFriction && 
-        ["missed-call-followup", "support-response"].includes(employee.id)) {
+        ["inbound-revenue", "support-response"].includes(employee.id)) {
       score += 1;
     }
     
@@ -215,7 +215,7 @@ function routeToAIEmployee(signal: Signal, painSignals: {
     if (b.score !== a.score) return b.score - a.score;
     
     // Tie-breakers
-    const revenueAgents = ["missed-call-followup", "lead-reactivation", "outbound-prospector"];
+    const revenueAgents = ["inbound-revenue", "lead-reactivation", "outbound-prospector"];
     const aIsRevenue = revenueAgents.includes(a.id);
     const bIsRevenue = revenueAgents.includes(b.id);
     
@@ -223,7 +223,7 @@ function routeToAIEmployee(signal: Signal, painSignals: {
     if (!aIsRevenue && bIsRevenue) return 1;
     
     // Inbound beats outbound
-    const inboundAgents = ["missed-call-followup", "support-response", "appointment-reminder"];
+    const inboundAgents = ["inbound-revenue", "support-response", "appointment-reminder"];
     const aIsInbound = inboundAgents.includes(a.id);
     const bIsInbound = inboundAgents.includes(b.id);
     
@@ -237,8 +237,8 @@ function routeToAIEmployee(signal: Signal, painSignals: {
   
   // Generate reason
   let reason = "";
-  if (painSignals.hasInboundFriction && best.id === "missed-call-followup") {
-    reason = "Handles missed calls and after-hours follow-up, directly addressing inbound response gaps.";
+  if (painSignals.hasInboundFriction && best.id === "inbound-revenue") {
+    reason = "Captures inbound leads and handles missed calls 24/7, directly addressing revenue loss from response gaps.";
   } else if (painSignals.hasRevenueProximity && best.id === "lead-reactivation") {
     reason = "Reactivates dormant leads and closes the loop on paid leads sitting in CRM.";
   } else if (painSignals.hasCoordinationOverload && best.id === "email-automation") {

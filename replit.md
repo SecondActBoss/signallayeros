@@ -113,7 +113,7 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
 ## AI Employee Routing
 
 8 AI Employees available for routing:
-1. Missed Call Follow-Up
+1. Inbound Revenue Agent
 2. Appointment Reminder + Rescheduler
 3. Lead Reactivation Agent
 4. Outbound Prospector

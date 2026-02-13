@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // AI Employee types for routing
 export const AI_EMPLOYEES = [
-  { id: "missed-call-followup", name: "Missed Call Follow-Up", description: "Missed calls, voicemail complaints, after-hours loss" },
+  { id: "inbound-revenue", name: "Inbound Revenue Agent", description: "Missed calls, voicemail complaints, after-hours loss, inbound lead capture" },
   { id: "appointment-reminder", name: "Appointment Reminder + Rescheduler", description: "No-shows, cancellations, calendar chaos" },
   { id: "lead-reactivation", name: "Lead Reactivation Agent", description: "Dormant leads, CRM rot, paid leads not closed" },
   { id: "outbound-prospector", name: "Outbound Prospector", description: "Manual outbound, pipeline creation fatigue" },
