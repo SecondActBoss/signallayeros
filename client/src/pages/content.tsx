@@ -14,10 +14,17 @@ import {
   Sparkles,
   Calendar,
   RefreshCw,
+  Target,
+  Lock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Insight, ContentRun } from "@shared/schema";
+import type { FocusedVertical } from "@shared/schema";
+
+type FocusResponse = {
+  focusedVertical: FocusedVertical | null;
+};
 
 const themeLabels: Record<string, { label: string; color: string }> = {
   "coordination-pain": { label: "Coordination Pain", color: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
@@ -179,15 +186,30 @@ export default function Content() {
     queryKey: ["/api/content-runs"],
   });
 
+  const { data: focusData } = useQuery<FocusResponse>({
+    queryKey: ["/api/verticals/focus"],
+  });
+
+  const focusedVertical = focusData?.focusedVertical;
+
   const generateMutation = useMutation({
     mutationFn: async () => {
+      if (focusedVertical) {
+        await apiRequest("POST", "/api/verticals/focus", {
+          industry: focusedVertical.industry,
+          reason: focusedVertical.reason,
+          primaryAIEmployee: focusedVertical.primaryAIEmployee,
+        });
+      }
       const response = await apiRequest("POST", "/api/content-runs/generate");
-      return response;
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       toast({
         title: "Content Generated",
-        description: "Weekly content drafts have been created.",
+        description: focusedVertical
+          ? `Weekly content generated for ${focusedVertical.industry} vertical.`
+          : "Weekly content drafts have been created.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/content-runs"] });
     },
@@ -216,6 +238,13 @@ export default function Content() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {focusedVertical && (
+            <Badge className="gap-1.5 text-xs bg-primary/20 text-primary border-primary/30" data-testid="badge-content-vertical">
+              <Target className="h-3 w-3" />
+              {focusedVertical.industry}
+              {focusedVertical.locked && <Lock className="h-3 w-3" />}
+            </Badge>
+          )}
           <Badge variant="outline" className="gap-1">
             <Lightbulb className="h-3 w-3" />
             {insights?.length ?? 0} insights
@@ -230,10 +259,22 @@ export default function Content() {
             ) : (
               <Sparkles className="h-4 w-4 mr-2" />
             )}
-            Generate Weekly Content
+            {focusedVertical
+              ? `Generate for ${focusedVertical.industry}`
+              : "Generate Weekly Content"}
           </Button>
         </div>
       </div>
+
+      {focusedVertical && (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+          <p className="text-xs text-muted-foreground">
+            <strong className="text-foreground">Vertical Lock Active:</strong> Content generation is locked to <strong>{focusedVertical.industry}</strong> operators.
+            All drafts will use real pain quotes from this vertical. Generic SMB language is excluded.
+            {focusedVertical.locked && " System is in vertical domination mode."}
+          </p>
+        </div>
+      )}
 
       <Tabs defaultValue="insights" className="space-y-6">
         <TabsList>

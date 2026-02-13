@@ -20,9 +20,17 @@ import {
   MapPin,
   User,
   Calendar,
+  Target,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useState } from "react";
 import type { Signal } from "@shared/schema";
+import type { FocusedVertical } from "@shared/schema";
+
+type FocusResponse = {
+  focusedVertical: FocusedVertical | null;
+};
 
 function SignalRow({ signal }: { signal: Signal }) {
   return (
@@ -137,12 +145,22 @@ function SignalCard({ signal }: { signal: Signal }) {
 export default function Signals() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [showAllVerticals, setShowAllVerticals] = useState(false);
 
   const { data: signals, isLoading } = useQuery<Signal[]>({
     queryKey: ["/api/signals"],
   });
 
+  const { data: focusData } = useQuery<FocusResponse>({
+    queryKey: ["/api/verticals/focus"],
+  });
+
+  const focusedVertical = focusData?.focusedVertical;
+
   const filteredSignals = signals?.filter((signal) => {
+    if (focusedVertical && !showAllVerticals) {
+      if (signal.industry !== focusedVertical.industry) return false;
+    }
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -158,7 +176,7 @@ export default function Signals() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Signals</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Pain Signals</h1>
           <p className="text-muted-foreground text-sm">
             Pain signals detected from research sources
           </p>
@@ -166,10 +184,36 @@ export default function Signals() {
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="gap-1">
             <Radio className="h-3 w-3" />
-            {signals?.length ?? 0} detected
+            {filteredSignals?.length ?? 0} detected
           </Badge>
         </div>
       </div>
+
+      {focusedVertical && (
+        <div className="flex items-center gap-2">
+          <Badge
+            className={`gap-1.5 text-xs ${
+              showAllVerticals
+                ? "bg-muted text-muted-foreground border-border"
+                : "bg-primary/20 text-primary border-primary/30"
+            }`}
+            data-testid="badge-vertical-filter"
+          >
+            <Target className="h-3 w-3" />
+            {showAllVerticals ? "Viewing: All Verticals" : `Viewing: ${focusedVertical.industry} Only`}
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => setShowAllVerticals(!showAllVerticals)}
+            data-testid="button-toggle-vertical-filter"
+          >
+            {showAllVerticals ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+            {showAllVerticals ? "Focus Vertical" : "Show All"}
+          </Button>
+        </div>
+      )}
 
       <div className="flex items-center gap-4 flex-wrap">
         <div className="relative flex-1 max-w-sm">
@@ -254,6 +298,8 @@ export default function Signals() {
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {searchQuery
                 ? "No signals match your search. Try different keywords."
+                : focusedVertical && !showAllVerticals
+                ? `No signals for ${focusedVertical.industry}. Try showing all verticals.`
                 : "Upload research data from the Ingest page to detect pain signals."}
             </p>
           </CardContent>

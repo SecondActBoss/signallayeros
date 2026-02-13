@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { scoreAndRouteSignal, generateInsight, generateContentDrafts } from "./scoring";
-import { insertSignalSchema, bulkSignalImportSchema, type ScoredLead } from "@shared/schema";
+import { insertSignalSchema, bulkSignalImportSchema, type ScoredLead, type FocusedVertical } from "@shared/schema";
 import { z } from "zod";
 import { appendToSheet } from "./googleSheets";
 
@@ -206,7 +206,7 @@ export async function registerRoutes(
 
   app.post("/api/leads/export", async (req, res) => {
     try {
-      const { spreadsheetId } = req.body;
+      const { spreadsheetId, verticalFilter } = req.body;
       
       if (!spreadsheetId) {
         res.status(400).json({ message: "Spreadsheet ID is required" });
@@ -214,12 +214,22 @@ export async function registerRoutes(
       }
       
       const leads = await storage.getLeads();
-      const unexported = leads.filter((l) => !l.exportedToSheets);
+      const focusedVertical = await storage.getFocusedVertical();
+      const activeVertical = verticalFilter || focusedVertical?.industry || null;
+      
+      let unexported = leads.filter((l) => !l.exportedToSheets);
+      
+      if (activeVertical) {
+        unexported = unexported.filter((l) => l.industry === activeVertical);
+      }
       
       if (unexported.length === 0) {
-        res.json({ exportedCount: 0, message: "No new leads to export" });
+        res.json({ exportedCount: 0, message: activeVertical ? `No new leads to export for ${activeVertical}` : "No new leads to export" });
         return;
       }
+      
+      const isLocked = focusedVertical?.locked || false;
+      const waveTag = isLocked && activeVertical ? `WAVE_1_${activeVertical.replace(/\s+/g, "_").toUpperCase()}` : "";
       
       // Format rows for Google Sheets (with headers if first export)
       const headers = [
@@ -234,7 +244,8 @@ export async function registerRoutes(
         "Confidence Score",
         "AI Employee",
         "Why This AI Employee",
-        "Source URL"
+        "Source URL",
+        "Wave Tag"
       ];
       
       const rows = unexported.map((lead) => [
@@ -249,7 +260,8 @@ export async function registerRoutes(
         String(lead.confidenceScore),
         lead.aiEmployeeName,
         lead.whyThisAIEmployee,
-        lead.sourceUrl || ""
+        lead.sourceUrl || "",
+        waveTag,
       ]);
       
       // Check if this is likely the first export (add headers)
@@ -262,7 +274,11 @@ export async function registerRoutes(
       // Mark as exported
       await storage.markLeadsExported(unexported.map((l) => l.id));
       
-      res.json({ exportedCount: unexported.length, message: `Exported ${unexported.length} leads to Google Sheets` });
+      const msg = activeVertical
+        ? `Exported ${unexported.length} ${activeVertical} leads to Google Sheets${waveTag ? ` [${waveTag}]` : ""}`
+        : `Exported ${unexported.length} leads to Google Sheets`;
+      
+      res.json({ exportedCount: unexported.length, message: msg, waveTag: waveTag || undefined });
     } catch (error: any) {
       console.error("Export error:", error);
       res.status(500).json({ message: error.message || "Failed to export leads" });
@@ -309,8 +325,10 @@ export async function registerRoutes(
       const contexts: ("ICP" | "Positioning" | "Be Contrary")[] = ["ICP", "Positioning"];
       
       const focusedVertical = await storage.getFocusedVertical();
+      const verticalName = focusedVertical?.industry || null;
+      const isLocked = focusedVertical?.locked || false;
       
-      const { linkedInDrafts, xDrafts } = generateContentDrafts(allInsights, contexts, focusedVertical);
+      const { linkedInDrafts, xDrafts } = generateContentDrafts(allInsights, contexts, verticalName);
       
       const run = await storage.createContentRun({
         runDate: now.toISOString(),
@@ -321,7 +339,7 @@ export async function registerRoutes(
         status: "completed",
       });
       
-      res.json({ ...run, focusedVertical });
+      res.json({ ...run, focusedVertical: verticalName, verticalLocked: isLocked });
     } catch (error) {
       res.status(500).json({ message: "Failed to generate content" });
     }
@@ -635,11 +653,220 @@ export async function registerRoutes(
 
   app.post("/api/verticals/focus", async (req, res) => {
     try {
-      const { industry } = req.body;
-      await storage.setFocusedVertical(industry || null);
-      res.json({ focusedVertical: industry || null });
+      const { industry, reason, primaryAIEmployee, dominantPainSignal, totalLeads, avgScore, growthRate } = req.body;
+
+      if (!industry) {
+        await storage.setFocusedVertical(null);
+        res.json({ focusedVertical: null });
+        return;
+      }
+
+      const existing = await storage.getFocusedVertical();
+      if (existing?.locked && existing.lockedUntil) {
+        const lockExpiry = new Date(existing.lockedUntil).getTime();
+        if (Date.now() < lockExpiry && existing.industry !== industry) {
+          res.status(409).json({
+            message: `Vertical is locked to "${existing.industry}" until ${new Date(existing.lockedUntil).toLocaleDateString()}. Unlock first or wait for expiry.`,
+          });
+          return;
+        }
+      }
+
+      const vertical: FocusedVertical = {
+        industry,
+        selectedAt: new Date().toISOString(),
+        reason: reason || "Manually selected",
+        primaryAIEmployee: primaryAIEmployee || "Unknown",
+        dominantPainSignal: dominantPainSignal || "Unknown",
+        totalLeads: totalLeads || 0,
+        avgScore: avgScore || 0,
+        growthRate: growthRate || 0,
+        locked: existing?.locked && existing.industry === industry ? existing.locked : false,
+        lockedUntil: existing?.locked && existing.industry === industry ? existing.lockedUntil : null,
+      };
+
+      await storage.setFocusedVertical(vertical);
+      res.json({ focusedVertical: vertical });
     } catch (error) {
       res.status(500).json({ message: "Failed to set focused vertical" });
+    }
+  });
+
+  // Lock/Unlock vertical (Cluster Lock Mode)
+  app.post("/api/verticals/lock", async (req, res) => {
+    try {
+      const focused = await storage.getFocusedVertical();
+      if (!focused) {
+        res.status(400).json({ message: "No vertical is currently focused. Select a vertical first." });
+        return;
+      }
+
+      const lockDays = 14;
+      const lockedUntil = new Date(Date.now() + lockDays * 24 * 60 * 60 * 1000).toISOString();
+
+      const locked: FocusedVertical = {
+        ...focused,
+        locked: true,
+        lockedUntil,
+      };
+
+      await storage.setFocusedVertical(locked);
+      res.json({ focusedVertical: locked });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to lock vertical" });
+    }
+  });
+
+  app.post("/api/verticals/unlock", async (req, res) => {
+    try {
+      const focused = await storage.getFocusedVertical();
+      if (!focused) {
+        res.status(400).json({ message: "No vertical is currently focused." });
+        return;
+      }
+
+      const unlocked: FocusedVertical = {
+        ...focused,
+        locked: false,
+        lockedUntil: null,
+      };
+
+      await storage.setFocusedVertical(unlocked);
+      res.json({ focusedVertical: unlocked });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to unlock vertical" });
+    }
+  });
+
+  // Vertical Density (for the Vertical Dominance Panel)
+  app.get("/api/verticals/density", async (req, res) => {
+    try {
+      const focused = await storage.getFocusedVertical();
+      if (!focused) {
+        res.json(null);
+        return;
+      }
+
+      const leads = await storage.getLeads();
+      const signals = await storage.getSignals();
+      const totalSignals = signals.length;
+
+      const verticalLeads = leads.filter((l) => l.industry === focused.industry);
+      const verticalSignals = signals.filter((s) => s.industry === focused.industry);
+
+      const now = Date.now();
+      const day = 24 * 60 * 60 * 1000;
+      const cutoff7d = new Date(now - 7 * day);
+      const cutoff14d = new Date(now - 14 * day);
+
+      const leads7d = verticalLeads.filter((l) => new Date(l.createdAt) >= cutoff7d);
+      const leadsPrior7d = verticalLeads.filter((l) => {
+        const d = new Date(l.createdAt);
+        return d >= cutoff14d && d < cutoff7d;
+      });
+
+      const totalPainScore = verticalLeads.reduce((s, l) => s + l.confidenceScore, 0);
+      const avgPainScore = verticalLeads.length > 0
+        ? Math.round((totalPainScore / verticalLeads.length) * 10) / 10
+        : 0;
+
+      const count7d = leads7d.length;
+      const countPrior = leadsPrior7d.length;
+      const growthRate7d = (count7d - countPrior) / Math.max(countPrior, 1);
+
+      const signalShare = totalSignals > 0
+        ? Math.round((verticalSignals.length / totalSignals) * 100)
+        : 0;
+
+      let clusterStrength: "Weak" | "Forming" | "Dominant";
+      if (signalShare >= 35 || (avgPainScore > 4 && verticalLeads.length >= 5)) {
+        clusterStrength = "Dominant";
+      } else if (avgPainScore >= 3.5 && verticalLeads.length >= 3) {
+        clusterStrength = "Forming";
+      } else {
+        clusterStrength = "Weak";
+      }
+
+      const breakoutDetected = signalShare >= 35;
+
+      const painCounts: Record<string, number> = {};
+      const aiEmployeeCounts: Record<string, number> = {};
+      for (const lead of verticalLeads) {
+        if (lead.hasCoordinationOverload) painCounts["Coordination Overload"] = (painCounts["Coordination Overload"] || 0) + 1;
+        if (lead.hasTurnoverFragility) painCounts["Turnover Fragility"] = (painCounts["Turnover Fragility"] || 0) + 1;
+        if (lead.hasInboundFriction) painCounts["Inbound Friction"] = (painCounts["Inbound Friction"] || 0) + 1;
+        if (lead.hasRevenueProximity) painCounts["Revenue Proximity"] = (painCounts["Revenue Proximity"] || 0) + 1;
+        aiEmployeeCounts[lead.aiEmployeeName] = (aiEmployeeCounts[lead.aiEmployeeName] || 0) + 1;
+      }
+
+      // Strategy outputs
+      const dominantPain = Object.entries(painCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "Unknown";
+      const primaryAI = Object.entries(aiEmployeeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "Unknown";
+
+      const strategyMap: Record<string, {
+        leadMagnet: string;
+        coldEmailHook: string;
+        linkedInHook: string;
+        demoFraming: string;
+      }> = {
+        "Coordination Overload": {
+          leadMagnet: `The ${focused.industry} Operator's Guide to Eliminating Handoff Chaos`,
+          coldEmailHook: `${focused.industry} teams are losing 15+ hours/week to coordination overhead. Here's the fix.`,
+          linkedInHook: `Every ${focused.industry.toLowerCase()} operator I talk to says the same thing: "I'm busy all day but nothing moves."`,
+          demoFraming: `See how ${focused.industry.toLowerCase()} operators are cutting coordination time by 80% with AI employees`,
+        },
+        "Turnover Fragility": {
+          leadMagnet: `How ${focused.industry} Companies Are Building Roles That Don't Break When People Leave`,
+          coldEmailHook: `You've rehired the same role 3 times this year. What if the role never needed a human?`,
+          linkedInHook: `Staff turnover in ${focused.industry.toLowerCase()} isn't a people problem — it's a systems problem.`,
+          demoFraming: `See how ${focused.industry.toLowerCase()} operators replaced fragile roles with AI employees that never quit`,
+        },
+        "Inbound Friction": {
+          leadMagnet: `The Hidden Revenue Leak: How ${focused.industry} Businesses Lose Customers Before They Even Talk to Them`,
+          coldEmailHook: `Your ${focused.industry.toLowerCase()} business missed 40+ calls last month. Each one was revenue walking away.`,
+          linkedInHook: `The #1 revenue killer in ${focused.industry.toLowerCase()}? It's not your product. It's your phone.`,
+          demoFraming: `See how ${focused.industry.toLowerCase()} businesses capture 100% of inbound leads with an AI employee that never misses a call`,
+        },
+        "Revenue Proximity": {
+          leadMagnet: `${focused.industry} Revenue Playbook: Stop Leaving Pipeline on the Table`,
+          coldEmailHook: `Your ${focused.industry.toLowerCase()} pipeline has $50K+ in deals stalling from process friction.`,
+          linkedInHook: `Most ${focused.industry.toLowerCase()} operators don't have a sales problem — they have an operations problem that's choking revenue.`,
+          demoFraming: `See how ${focused.industry.toLowerCase()} operators are closing 30% more deals by removing operational bottlenecks`,
+        },
+      };
+
+      const strategy = strategyMap[dominantPain] || {
+        leadMagnet: `AI Staffing Blueprint for ${focused.industry}`,
+        coldEmailHook: `${focused.industry} operators are automating their biggest bottleneck. Here's how.`,
+        linkedInHook: `The ${focused.industry.toLowerCase()} industry is about to change. Operators who move first will win.`,
+        demoFraming: `See how AI employees are transforming ${focused.industry.toLowerCase()} operations`,
+      };
+
+      // Top pain quotes
+      const topQuotes = [...verticalLeads]
+        .sort((a, b) => b.confidenceScore - a.confidenceScore)
+        .slice(0, 3)
+        .map((l) => l.painQuote);
+
+      res.json({
+        industry: focused.industry,
+        totalSignals: verticalSignals.length,
+        totalLeads: verticalLeads.length,
+        avgPainScore,
+        growthRate7d: Math.round(growthRate7d * 100) / 100,
+        signalShare,
+        clusterStrength,
+        breakoutDetected,
+        dominantPainSignal: dominantPain,
+        primaryAIEmployee: primaryAI,
+        topPainQuotes: topQuotes,
+        strategy,
+        locked: focused.locked,
+        lockedUntil: focused.lockedUntil,
+      });
+    } catch (error) {
+      console.error("Density error:", error);
+      res.status(500).json({ message: "Failed to get vertical density" });
     }
   });
 

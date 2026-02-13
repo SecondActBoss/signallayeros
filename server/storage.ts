@@ -7,6 +7,7 @@ import type {
   InsertInsight,
   ContentRun,
   Stats,
+  FocusedVertical,
 } from "@shared/schema";
 import { AI_EMPLOYEES } from "@shared/schema";
 
@@ -40,8 +41,8 @@ export interface IStorage {
   getStats(): Promise<Stats>;
 
   // Focused Vertical
-  getFocusedVertical(): Promise<string | null>;
-  setFocusedVertical(industry: string | null): Promise<void>;
+  getFocusedVertical(): Promise<FocusedVertical | null>;
+  setFocusedVertical(vertical: FocusedVertical | null): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -49,7 +50,7 @@ export class MemStorage implements IStorage {
   private leads: Map<string, ScoredLead>;
   private insights: Map<string, Insight>;
   private contentRuns: Map<string, ContentRun>;
-  private focusedVertical: string | null;
+  private focusedVertical: FocusedVertical | null;
 
   constructor() {
     this.signals = new Map();
@@ -207,12 +208,18 @@ export class MemStorage implements IStorage {
   }
 
   // Focused Vertical
-  async getFocusedVertical(): Promise<string | null> {
+  async getFocusedVertical(): Promise<FocusedVertical | null> {
+    if (this.focusedVertical?.locked && this.focusedVertical.lockedUntil) {
+      const lockExpiry = new Date(this.focusedVertical.lockedUntil).getTime();
+      if (Date.now() > lockExpiry) {
+        this.focusedVertical = { ...this.focusedVertical, locked: false, lockedUntil: null };
+      }
+    }
     return this.focusedVertical;
   }
 
-  async setFocusedVertical(industry: string | null): Promise<void> {
-    this.focusedVertical = industry;
+  async setFocusedVertical(vertical: FocusedVertical | null): Promise<void> {
+    this.focusedVertical = vertical;
   }
 }
 

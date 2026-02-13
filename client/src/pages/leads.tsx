@@ -13,14 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -41,12 +33,20 @@ import {
   CheckCircle,
   XCircle,
   Bot,
+  Target,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { ScoredLead } from "@shared/schema";
 import { AI_EMPLOYEES } from "@shared/schema";
+import type { FocusedVertical } from "@shared/schema";
+
+type FocusResponse = {
+  focusedVertical: FocusedVertical | null;
+};
 
 function ScoreBadge({ score }: { score: number }) {
   const scoreClass = `score-${score}`;
@@ -186,16 +186,26 @@ export default function Leads() {
   const [aiEmployeeFilter, setAiEmployeeFilter] = useState<string>("all");
   const [spreadsheetId, setSpreadsheetId] = useState("");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [showAllVerticals, setShowAllVerticals] = useState(false);
   const { toast } = useToast();
 
   const { data: leads, isLoading } = useQuery<ScoredLead[]>({
     queryKey: ["/api/leads"],
   });
 
+  const { data: focusData } = useQuery<FocusResponse>({
+    queryKey: ["/api/verticals/focus"],
+  });
+
+  const focusedVertical = focusData?.focusedVertical;
+
   const exportMutation = useMutation({
     mutationFn: async (sheetId: string) => {
-      const response = await apiRequest("POST", "/api/leads/export", { spreadsheetId: sheetId });
-      return response;
+      const response = await apiRequest("POST", "/api/leads/export", {
+        spreadsheetId: sheetId,
+        verticalFilter: focusedVertical && !showAllVerticals ? focusedVertical.industry : undefined,
+      });
+      return response.json();
     },
     onSuccess: (data: any) => {
       setExportDialogOpen(false);
@@ -215,6 +225,9 @@ export default function Leads() {
   });
 
   const filteredLeads = leads?.filter((lead) => {
+    if (focusedVertical && !showAllVerticals) {
+      if (lead.industry !== focusedVertical.industry) return false;
+    }
     if (scoreFilter !== "all" && lead.confidenceScore !== parseInt(scoreFilter)) {
       return false;
     }
@@ -232,13 +245,13 @@ export default function Leads() {
     );
   });
 
-  const highIntentCount = leads?.filter((l) => l.confidenceScore >= 4).length ?? 0;
+  const highIntentCount = filteredLeads?.filter((l) => l.confidenceScore >= 4).length ?? 0;
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Operator Targets</h1>
           <p className="text-muted-foreground text-sm">
             Scored and routed leads ready for outreach
           </p>
@@ -246,7 +259,7 @@ export default function Leads() {
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="gap-1">
             <Users className="h-3 w-3" />
-            {leads?.length ?? 0} total
+            {filteredLeads?.length ?? 0} total
           </Badge>
           <Badge className="gap-1 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
             {highIntentCount} high-intent
@@ -254,11 +267,37 @@ export default function Leads() {
         </div>
       </div>
 
+      {focusedVertical && (
+        <div className="flex items-center gap-2">
+          <Badge
+            className={`gap-1.5 text-xs ${
+              showAllVerticals
+                ? "bg-muted text-muted-foreground border-border"
+                : "bg-primary/20 text-primary border-primary/30"
+            }`}
+            data-testid="badge-vertical-filter"
+          >
+            <Target className="h-3 w-3" />
+            {showAllVerticals ? "Viewing: All Verticals" : `Viewing: ${focusedVertical.industry} Only`}
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => setShowAllVerticals(!showAllVerticals)}
+            data-testid="button-toggle-vertical-filter"
+          >
+            {showAllVerticals ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+            {showAllVerticals ? "Focus Vertical" : "Show All"}
+          </Button>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search leads..."
+            placeholder="Search operator targets..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -294,7 +333,7 @@ export default function Leads() {
         <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
           <DialogTrigger asChild>
             <Button
-              disabled={!leads?.length}
+              disabled={!filteredLeads?.length}
               data-testid="button-export-leads"
             >
               <Download className="h-4 w-4 mr-2" />
@@ -305,6 +344,9 @@ export default function Leads() {
             <DialogHeader>
               <DialogTitle>Export to Google Sheets</DialogTitle>
               <DialogDescription>
+                {focusedVertical && !showAllVerticals ? (
+                  <>Exporting <strong>{focusedVertical.industry}</strong> leads only. </>
+                ) : null}
                 Enter your Google Sheet ID to export leads. You can find the ID in your spreadsheet URL:
                 <code className="block mt-2 p-2 bg-muted rounded text-xs break-all">
                   docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit
@@ -365,10 +407,12 @@ export default function Leads() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Users className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="font-medium text-lg mb-1">No leads found</h3>
+            <h3 className="font-medium text-lg mb-1">No operator targets found</h3>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
               {searchQuery || scoreFilter !== "all" || aiEmployeeFilter !== "all"
                 ? "No leads match your filters. Try different criteria."
+                : focusedVertical && !showAllVerticals
+                ? `No leads for ${focusedVertical.industry}. Try showing all verticals.`
                 : "Signals are scored and routed automatically. Upload research data to get started."}
             </p>
           </CardContent>

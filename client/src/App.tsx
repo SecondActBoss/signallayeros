@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { VerticalBanner } from "@/components/vertical-banner";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Signals from "@/pages/signals";
@@ -45,6 +46,7 @@ function App() {
                   <SidebarTrigger data-testid="button-sidebar-toggle" />
                   <ThemeToggle />
                 </header>
+                <VerticalBanner />
                 <main className="flex-1 overflow-auto">
                   <Router />
                 </main>

@@ -127,6 +127,22 @@ export const bulkSignalImportSchema = z.object({
 
 export type BulkSignalImport = z.infer<typeof bulkSignalImportSchema>;
 
+// Focused Vertical state (rich object for Vertical War Mode)
+export const focusedVerticalSchema = z.object({
+  industry: z.string(),
+  selectedAt: z.string(),
+  reason: z.string(),
+  primaryAIEmployee: z.string(),
+  dominantPainSignal: z.string(),
+  totalLeads: z.number(),
+  avgScore: z.number(),
+  growthRate: z.number(),
+  locked: z.boolean(),
+  lockedUntil: z.string().nullable(),
+});
+
+export type FocusedVertical = z.infer<typeof focusedVerticalSchema>;
+
 // Keep existing user types for compatibility
 export const users = {
   id: "",

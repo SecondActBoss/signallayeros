@@ -22,17 +22,17 @@ import {
 
 const navigationItems = [
   {
-    title: "Dashboard",
+    title: "Command Center",
     url: "/",
     icon: LayoutDashboard,
   },
   {
-    title: "Signals",
+    title: "Pain Signals",
     url: "/signals",
     icon: Radio,
   },
   {
-    title: "Leads",
+    title: "Operator Targets",
     url: "/leads",
     icon: Users,
   },

@@ -23,10 +23,22 @@ import {
   Sparkles,
   Download,
   Loader2,
+  Lock,
+  Shield,
+  Crosshair,
+  Mail,
+  Linkedin,
+  MessageSquare,
+  Presentation,
+  AlertTriangle,
 } from "lucide-react";
 import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
-import type { Stats, ScoredLead, Signal } from "@shared/schema";
+import type { Stats, ScoredLead, Signal, FocusedVertical } from "@shared/schema";
+
+type FocusResponse = {
+  focusedVertical: FocusedVertical | null;
+};
 
 type VerticalRank = {
   industry: string;
@@ -59,6 +71,28 @@ type WeeklyFocus = {
   avgScore: number;
   growthRate: number;
   generatedAt: string;
+};
+
+type VerticalDensity = {
+  industry: string;
+  totalSignals: number;
+  totalLeads: number;
+  avgPainScore: number;
+  growthRate7d: number;
+  signalShare: number;
+  clusterStrength: "Weak" | "Forming" | "Dominant";
+  breakoutDetected: boolean;
+  dominantPainSignal: string;
+  primaryAIEmployee: string;
+  topPainQuotes: string[];
+  strategy: {
+    leadMagnet: string;
+    coldEmailHook: string;
+    linkedInHook: string;
+    demoFraming: string;
+  };
+  locked: boolean;
+  lockedUntil: string | null;
 };
 
 function StatCard({
@@ -102,6 +136,403 @@ function StatCard({
   );
 }
 
+function painSignalColor(signal: string): string {
+  switch (signal) {
+    case "Coordination Overload": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+    case "Turnover Fragility": return "bg-rose-500/20 text-rose-400 border-rose-500/30";
+    case "Inbound Friction": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+    case "Revenue Proximity": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+    default: return "bg-muted text-muted-foreground";
+  }
+}
+
+function clusterStrengthStyle(strength: string): string {
+  switch (strength) {
+    case "Dominant": return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "Forming": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+    case "Weak": return "bg-muted text-muted-foreground border-border";
+    case "High": return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "Medium": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+    case "Emerging": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+    default: return "bg-muted text-muted-foreground";
+  }
+}
+
+function VerticalDominancePanel() {
+  const queryClient = useQueryClient();
+
+  const { data: density, isLoading: densityLoading } = useQuery<VerticalDensity | null>({
+    queryKey: ["/api/verticals/density"],
+  });
+
+  const { data: focus, isLoading: focusLoading } = useQuery<WeeklyFocus | null>({
+    queryKey: ["/api/verticals/weekly-focus"],
+  });
+
+  const { data: focusData } = useQuery<FocusResponse>({
+    queryKey: ["/api/verticals/focus"],
+  });
+
+  const focusedVertical = focusData?.focusedVertical;
+
+  const setFocusMutation = useMutation({
+    mutationFn: async (focusObj: any) => {
+      const res = await apiRequest("POST", "/api/verticals/focus", focusObj);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/verticals/focus"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/verticals/density"] });
+    },
+  });
+
+  const lockMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/verticals/lock");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/verticals/focus"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/verticals/density"] });
+    },
+  });
+
+  const contentMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/content-runs/generate");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-runs"] });
+    },
+  });
+
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [spreadsheetId, setSpreadsheetId] = useState("");
+
+  const exportMutation = useMutation({
+    mutationFn: async (sheetId: string) => {
+      const res = await apiRequest("POST", "/api/leads/export", { spreadsheetId: sheetId });
+      return res.json();
+    },
+    onSuccess: () => {
+      setExportDialogOpen(false);
+      setSpreadsheetId("");
+    },
+  });
+
+  const isLoading = densityLoading || focusLoading;
+
+  if (isLoading) {
+    return (
+      <Card className="border-primary/20">
+        <CardHeader>
+          <Skeleton className="h-6 w-64" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!focus && !focusedVertical) {
+    return (
+      <Card className="border-dashed border-muted-foreground/30">
+        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+          <Crosshair className="h-16 w-16 text-muted-foreground/15 mb-4" />
+          <p className="text-lg font-semibold text-muted-foreground" data-testid="text-no-vertical">
+            No vertical focus yet. Ingest signals to activate.
+          </p>
+          <p className="text-xs text-muted-foreground/70 mt-2 max-w-md">
+            SignalLayerOS needs signal data to select a vertical. Once signals are ingested, the engine will automatically identify your highest-leverage vertical for conquest.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const activateVertical = () => {
+    if (focus) {
+      setFocusMutation.mutate({
+        industry: focus.industry,
+        reason: focus.reasonSelected,
+        primaryAIEmployee: focus.primaryAIAgentDemand,
+        dominantPainSignal: focus.dominantPainSignal,
+        totalLeads: focus.totalLeads,
+        avgScore: focus.avgScore,
+        growthRate: focus.growthRate,
+      });
+    }
+  };
+
+  if (focus && !focusedVertical) {
+    return (
+      <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent" data-testid="weekly-focus-panel">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Crown className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base font-semibold">Recommended Vertical</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight" data-testid="text-focus-industry">
+              Deploying: {focus.industry} — {focus.totalLeads} signals, avg score {focus.avgScore}, +{Math.round(focus.growthRate * 100)}% growth
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1" data-testid="text-focus-reason">{focus.reasonSelected}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className={`text-xs ${painSignalColor(focus.dominantPainSignal)}`}>
+              {focus.dominantPainSignal}
+            </Badge>
+            <div className="flex items-center gap-1.5 text-sm">
+              <Bot className="h-4 w-4 text-primary" />
+              <span data-testid="text-focus-ai-agent">{focus.primaryAIAgentDemand}</span>
+            </div>
+          </div>
+          <Button onClick={activateVertical} disabled={setFocusMutation.isPending} data-testid="button-activate-vertical">
+            <Target className="h-4 w-4 mr-2" />
+            {setFocusMutation.isPending ? "Activating..." : "Activate This Vertical"}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const d = density;
+  const isLocked = d?.locked || focusedVertical?.locked;
+
+  return (
+    <div className="space-y-6" data-testid="vertical-dominance-panel">
+      <Card className={`border-2 ${isLocked ? "border-red-500/40 bg-gradient-to-br from-red-500/5 via-transparent to-red-500/5" : "border-primary/30 bg-gradient-to-br from-primary/5 to-transparent"}`}>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Shield className={`h-5 w-5 ${isLocked ? "text-red-400" : "text-primary"}`} />
+            <CardTitle className="text-base font-semibold">Vertical Dominance</CardTitle>
+            {isLocked && (
+              <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs gap-1">
+                <Lock className="h-3 w-3" />
+                DOMINATION MODE
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight" data-testid="text-active-vertical">
+              {isLocked ? "DEPLOYING" : "Targeting"}: {focusedVertical?.industry}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">{focusedVertical?.reason}</p>
+          </div>
+
+          {d && (
+            <>
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
+                  <p className="text-2xl font-bold" data-testid="text-density-signals">{d.totalSignals}</p>
+                  <p className="text-xs text-muted-foreground">Signals</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
+                  <p className="text-2xl font-bold" data-testid="text-density-avg">{d.avgPainScore}</p>
+                  <p className="text-xs text-muted-foreground">Avg Pain</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
+                  <p className={`text-2xl font-bold ${d.growthRate7d > 0 ? "text-emerald-500" : ""}`}>
+                    {d.growthRate7d > 0 ? "+" : ""}{Math.round(d.growthRate7d * 100)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground">Growth 7d</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
+                  <p className="text-2xl font-bold" data-testid="text-density-share">{d.signalShare}%</p>
+                  <p className="text-xs text-muted-foreground">Signal Share</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50 text-center">
+                  <Badge variant="outline" className={`text-xs ${clusterStrengthStyle(d.clusterStrength)}`} data-testid="badge-cluster-strength">
+                    {d.clusterStrength}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground mt-1">Cluster</p>
+                </div>
+              </div>
+
+              {d.breakoutDetected && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                  <Flame className="h-5 w-5 text-red-400" />
+                  <span className="text-sm font-semibold text-red-400" data-testid="text-breakout">
+                    Vertical Breakout Detected — {d.signalShare}% signal dominance
+                  </span>
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Bot className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">Primary AI Employee Demand</span>
+                  </div>
+                  <p className="text-sm font-semibold" data-testid="text-density-ai">{d.primaryAIEmployee}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">Dominant Pain Signal</span>
+                  </div>
+                  <Badge variant="outline" className={`text-xs ${painSignalColor(d.dominantPainSignal)}`}>
+                    {d.dominantPainSignal}
+                  </Badge>
+                </div>
+              </div>
+
+              {d.topPainQuotes.length > 0 && (
+                <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Quote className="h-4 w-4 text-primary" />
+                    <span className="text-xs font-medium text-muted-foreground">Top Pain Quotes</span>
+                  </div>
+                  <div className="space-y-2">
+                    {d.topPainQuotes.map((quote, idx) => (
+                      <p key={idx} className="text-sm italic text-muted-foreground pl-3 border-l-2 border-primary/30" data-testid={`text-pain-quote-${idx}`}>
+                        "{quote}"
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="flex flex-wrap gap-2 pt-2">
+            {!isLocked && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => lockMutation.mutate()}
+                disabled={lockMutation.isPending}
+                data-testid="button-commit-vertical"
+              >
+                {lockMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Lock className="h-4 w-4 mr-2" />
+                )}
+                Commit to This Vertical
+              </Button>
+            )}
+            <Button
+              size="sm"
+              onClick={() => contentMutation.mutate()}
+              disabled={contentMutation.isPending}
+              data-testid="button-generate-content"
+            >
+              {contentMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              Generate Content
+            </Button>
+            {!exportDialogOpen ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExportDialogOpen(true)}
+                data-testid="button-export-leads"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export Operator Targets
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Google Sheet ID"
+                  value={spreadsheetId}
+                  onChange={(e) => setSpreadsheetId(e.target.value)}
+                  className="h-8 px-2 text-xs rounded border border-border bg-background w-48"
+                  data-testid="input-export-sheet-id"
+                />
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-8 text-xs"
+                  onClick={() => exportMutation.mutate(spreadsheetId)}
+                  disabled={!spreadsheetId || exportMutation.isPending}
+                  data-testid="button-export-confirm"
+                >
+                  {exportMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Export"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 text-xs"
+                  onClick={() => { setExportDialogOpen(false); setSpreadsheetId(""); }}
+                  data-testid="button-export-cancel"
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {contentMutation.isSuccess && (
+            <p className="text-xs text-emerald-500" data-testid="text-content-success">
+              Content generated with {focusedVertical?.industry} vertical focus. Check the Content page for drafts.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {d?.strategy && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base font-semibold">Vertical Strategy Output</CardTitle>
+              <Badge variant="outline" className="text-xs">
+                <Crosshair className="h-3 w-3 mr-1" />
+                {focusedVertical?.industry}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <BookOpen className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">Lead Magnet Title</span>
+                </div>
+                <p className="text-sm font-semibold" data-testid="text-strategy-leadmagnet">{d.strategy.leadMagnet}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Mail className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">Cold Email Hook</span>
+                </div>
+                <p className="text-sm" data-testid="text-strategy-email">{d.strategy.coldEmailHook}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Linkedin className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">LinkedIn Post Hook</span>
+                </div>
+                <p className="text-sm" data-testid="text-strategy-linkedin">{d.strategy.linkedInHook}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Presentation className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-medium text-muted-foreground">Demo Framing</span>
+                </div>
+                <p className="text-sm" data-testid="text-strategy-demo">{d.strategy.demoFraming}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function RecentLeadRow({ lead }: { lead: ScoredLead }) {
   const scoreClass = `score-${lead.confidenceScore}`;
   
@@ -142,245 +573,14 @@ function RecentSignalRow({ signal }: { signal: Signal }) {
   );
 }
 
-function painSignalColor(signal: string): string {
-  switch (signal) {
-    case "Coordination Overload": return "bg-amber-500/20 text-amber-400 border-amber-500/30";
-    case "Turnover Fragility": return "bg-rose-500/20 text-rose-400 border-rose-500/30";
-    case "Inbound Friction": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
-    case "Revenue Proximity": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
-    default: return "bg-muted text-muted-foreground";
-  }
-}
-
-function WeeklyVerticalFocusPanel() {
-  const queryClient = useQueryClient();
-
-  const { data: focus, isLoading } = useQuery<WeeklyFocus | null>({
-    queryKey: ["/api/verticals/weekly-focus"],
-  });
-
-  const contentMutation = useMutation({
-    mutationFn: async () => {
-      if (focus) {
-        await apiRequest("POST", "/api/verticals/focus", { industry: focus.industry });
-      }
-      const res = await apiRequest("POST", "/api/content-runs/generate");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/content-runs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/verticals/focus"] });
-    },
-  });
-
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [spreadsheetId, setSpreadsheetId] = useState("");
-
-  const exportMutation = useMutation({
-    mutationFn: async (sheetId: string) => {
-      const res = await apiRequest("POST", "/api/leads/export", { spreadsheetId: sheetId });
-      return res.json();
-    },
-    onSuccess: () => {
-      setExportDialogOpen(false);
-      setSpreadsheetId("");
-    },
-  });
-
-  if (isLoading) {
-    return (
-      <Card className="border-primary/20">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-5 w-48" />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-20 w-full" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!focus) {
-    return (
-      <Card className="border-dashed border-muted-foreground/30">
-        <CardContent className="flex flex-col items-center justify-center py-10 text-center">
-          <Crown className="h-12 w-12 text-muted-foreground/20 mb-4" />
-          <p className="text-sm font-medium text-muted-foreground">No Weekly Focus Available</p>
-          <p className="text-xs text-muted-foreground/70 mt-1 max-w-sm">
-            Ingest signals to enable automated vertical selection. The engine needs lead data to identify your highest-leverage vertical.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent" data-testid="weekly-focus-panel">
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Crown className="h-5 w-5 text-primary" />
-          <CardTitle className="text-base font-semibold">Weekly Vertical Focus</CardTitle>
-          <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">
-            Command Center
-          </Badge>
-        </div>
-        <span className="text-xs text-muted-foreground">
-          {new Date(focus.generatedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-        </span>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight" data-testid="text-focus-industry">{focus.industry}</h2>
-            <p className="text-sm text-muted-foreground mt-1" data-testid="text-focus-reason">{focus.reasonSelected}</p>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <Badge variant="outline" className={`text-xs ${painSignalColor(focus.dominantPainSignal)}`}>
-              {focus.dominantPainSignal}
-            </Badge>
-            <Badge variant="outline" className="text-xs">
-              {focus.totalLeads} leads
-            </Badge>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
-            <div className="flex items-center gap-2 mb-2">
-              <Bot className="h-4 w-4 text-primary" />
-              <span className="text-xs font-medium text-muted-foreground">Most Demanded AI Employee</span>
-            </div>
-            <p className="text-sm font-semibold" data-testid="text-focus-ai-agent">{focus.primaryAIAgentDemand}</p>
-          </div>
-
-          <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
-            <div className="flex items-center gap-2 mb-2">
-              <BookOpen className="h-4 w-4 text-primary" />
-              <span className="text-xs font-medium text-muted-foreground">Suggested Blueprint</span>
-            </div>
-            <p className="text-sm font-semibold" data-testid="text-focus-blueprint">{focus.suggestedBlueprintTitle}</p>
-          </div>
-        </div>
-
-        <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
-          <div className="flex items-center gap-2 mb-3">
-            <Quote className="h-4 w-4 text-primary" />
-            <span className="text-xs font-medium text-muted-foreground">Top Pain Quotes</span>
-          </div>
-          <div className="space-y-2">
-            {focus.topPainQuotes.map((quote, idx) => (
-              <p key={idx} className="text-sm italic text-muted-foreground pl-3 border-l-2 border-primary/30" data-testid={`text-pain-quote-${idx}`}>
-                "{quote}"
-              </p>
-            ))}
-          </div>
-        </div>
-
-        <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-xs font-medium text-muted-foreground">Suggested Content Angles</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {focus.suggestedContentAngles.map((angle, idx) => (
-              <Badge key={idx} variant="outline" className="text-xs" data-testid={`badge-content-angle-${idx}`}>
-                {angle}
-              </Badge>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Button
-            size="sm"
-            onClick={() => contentMutation.mutate()}
-            disabled={contentMutation.isPending}
-            data-testid="button-generate-content"
-          >
-            {contentMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4 mr-2" />
-            )}
-            Generate Content
-          </Button>
-
-          {!exportDialogOpen ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setExportDialogOpen(true)}
-              data-testid="button-export-leads"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export High-Intent Leads
-            </Button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Google Sheet ID"
-                value={spreadsheetId}
-                onChange={(e) => setSpreadsheetId(e.target.value)}
-                className="h-8 px-2 text-xs rounded border border-border bg-background w-48"
-                data-testid="input-export-sheet-id"
-              />
-              <Button
-                size="sm"
-                variant="default"
-                className="h-8 text-xs"
-                onClick={() => exportMutation.mutate(spreadsheetId)}
-                disabled={!spreadsheetId || exportMutation.isPending}
-                data-testid="button-export-confirm"
-              >
-                {exportMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Export"}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-8 text-xs"
-                onClick={() => { setExportDialogOpen(false); setSpreadsheetId(""); }}
-                data-testid="button-export-cancel"
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {contentMutation.isSuccess && (
-          <p className="text-xs text-emerald-500" data-testid="text-content-success">
-            Content generated with {focus.industry} vertical focus. Check the Content page for drafts.
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function clusterStrengthBadge(strength: "High" | "Medium" | "Emerging") {
-  switch (strength) {
-    case "High":
-      return "bg-red-500/20 text-red-400 border-red-500/30";
-    case "Medium":
-      return "bg-amber-500/20 text-amber-400 border-amber-500/30";
-    case "Emerging":
-      return "bg-blue-500/20 text-blue-400 border-blue-500/30";
-  }
-}
-
-function EmergingClustersPanel() {
+function ClusterRadarPanel() {
   const queryClient = useQueryClient();
 
   const { data: clusters, isLoading } = useQuery<VerticalCluster[]>({
     queryKey: ["/api/verticals/clusters"],
   });
 
-  const { data: focusData } = useQuery<{ focusedVertical: string | null }>({
+  const { data: focusData } = useQuery<FocusResponse>({
     queryKey: ["/api/verticals/focus"],
   });
 
@@ -390,6 +590,7 @@ function EmergingClustersPanel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/verticals/focus"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/verticals/density"] });
     },
   });
 
@@ -399,29 +600,12 @@ function EmergingClustersPanel() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-base font-semibold">Emerging Clusters</CardTitle>
+          <CardTitle className="text-base font-semibold">Cluster Radar</CardTitle>
           <Badge variant="outline" className="text-xs">
             <Target className="h-3 w-3 mr-1" />
-            Radar
+            Detection
           </Badge>
         </div>
-        {focusedVertical && (
-          <div className="flex items-center gap-1.5">
-            <Badge className="bg-primary/20 text-primary border-primary/30 text-xs gap-1">
-              <Target className="h-3 w-3" />
-              Focused: {focusedVertical}
-            </Badge>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={() => focusMutation.mutate(null)}
-              data-testid="button-clear-focus"
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -457,18 +641,18 @@ function EmergingClustersPanel() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <Badge variant="outline" className={`text-xs ${clusterStrengthBadge(c.clusterStrength)}`}>
+                  <Badge variant="outline" className={`text-xs ${clusterStrengthStyle(c.clusterStrength)}`}>
                     {c.clusterStrength}
                   </Badge>
                   <Button
-                    variant={focusedVertical === c.industry ? "default" : "outline"}
+                    variant={focusedVertical?.industry === c.industry ? "default" : "outline"}
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => focusMutation.mutate(focusedVertical === c.industry ? null : c.industry)}
+                    onClick={() => focusMutation.mutate(focusedVertical?.industry === c.industry ? null : c.industry)}
                     disabled={focusMutation.isPending}
                     data-testid={`button-focus-${c.industry}`}
                   >
-                    {focusedVertical === c.industry ? "Focused" : "Focus This Vertical"}
+                    {focusedVertical?.industry === c.industry ? "Focused" : "Focus"}
                   </Button>
                 </div>
               </div>
@@ -488,7 +672,7 @@ function EmergingClustersPanel() {
   );
 }
 
-function VerticalIntelligencePanel() {
+function VerticalDominationPanel() {
   const [timeRange, setTimeRange] = useState<string>("all");
 
   const { data: verticals, isLoading } = useQuery<VerticalRank[]>({
@@ -507,7 +691,7 @@ function VerticalIntelligencePanel() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-base font-semibold">Vertical Intelligence</CardTitle>
+          <CardTitle className="text-base font-semibold">Vertical Domination</CardTitle>
           <Badge variant="outline" className="text-xs">
             <BarChart3 className="h-3 w-3 mr-1" />
             {verticals?.length ?? 0} Industries
@@ -610,191 +794,130 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Command Center</h1>
           <p className="text-muted-foreground text-sm">
-            GTM intelligence overview for AgentLayerOS
+            Vertical conquest machine — focus, dominate, deploy
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="gap-1">
-            <Zap className="h-3 w-3" />
-            Live
-          </Badge>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <VerticalDominancePanel />
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {statsLoading ? (
-          <>
-            {[1, 2, 3, 4].map((i) => (
-              <Card key={i}>
-                <CardHeader className="pb-2">
-                  <Skeleton className="h-4 w-24" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-16" />
-                </CardContent>
-              </Card>
-            ))}
-          </>
+          Array.from({ length: 5 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-20" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16" />
+              </CardContent>
+            </Card>
+          ))
         ) : (
           <>
             <StatCard
-              title="Total Signals"
+              title="Pain Signals"
               value={stats?.totalSignals ?? 0}
               icon={Radio}
-              description="Pain signals detected"
+              description="Detected signals"
             />
             <StatCard
-              title="Qualified Leads"
+              title="Operator Targets"
               value={stats?.totalLeads ?? 0}
               icon={Users}
-              description="Scored and routed"
+              description="Scored leads"
             />
             <StatCard
               title="High-Intent"
               value={stats?.highIntentLeads ?? 0}
               icon={TrendingUp}
-              description="Score 4-5 leads"
+              description="Score 4-5"
             />
             <StatCard
-              title="Content Insights"
+              title="Insights"
               value={stats?.contentInsights ?? 0}
               icon={FileText}
-              description="For ContentLayerOS"
+              description="Content inputs"
+            />
+            <StatCard
+              title="Content Runs"
+              value={stats?.contentRuns ?? 0}
+              icon={Calendar}
+              description="Weekly batches"
             />
           </>
         )}
       </div>
 
-      <WeeklyVerticalFocusPanel />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <VerticalDominationPanel />
+        <ClusterRadarPanel />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base font-semibold">Recent Leads</CardTitle>
-            <Badge variant="outline" className="text-xs">
-              <Users className="h-3 w-3 mr-1" />
-              Scored
-            </Badge>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">
+              Recent Operator Targets
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {leadsLoading ? (
               <div className="space-y-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="flex items-center gap-4 py-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-16" />
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-4 py-3">
+                    <div className="flex-1">
+                      <Skeleton className="h-4 w-48 mb-1" />
+                      <Skeleton className="h-3 w-32" />
+                    </div>
+                    <Skeleton className="h-5 w-16" />
                   </div>
                 ))}
               </div>
             ) : recentLeads && recentLeads.length > 0 ? (
-              <div className="divide-y divide-border/50">
-                {recentLeads.slice(0, 5).map((lead) => (
-                  <RecentLeadRow key={lead.id} lead={lead} />
-                ))}
-              </div>
+              recentLeads.map((lead) => (
+                <RecentLeadRow key={lead.id} lead={lead} />
+              ))
             ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Users className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                <p className="text-sm text-muted-foreground">No leads yet</p>
-                <p className="text-xs text-muted-foreground/70">
-                  Ingest signals to start scoring
-                </p>
-              </div>
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No leads yet. Ingest signals to start scoring.
+              </p>
             )}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base font-semibold">Recent Signals</CardTitle>
-            <Badge variant="outline" className="text-xs">
-              <Radio className="h-3 w-3 mr-1" />
-              Detected
-            </Badge>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold">
+              Recent Pain Signals
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {signalsLoading ? (
               <div className="space-y-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="py-2">
-                    <Skeleton className="h-4 w-40 mb-2" />
-                    <Skeleton className="h-3 w-full" />
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="py-3">
+                    <Skeleton className="h-4 w-48 mb-2" />
+                    <Skeleton className="h-8 w-full" />
                   </div>
                 ))}
               </div>
             ) : recentSignals && recentSignals.length > 0 ? (
-              <div className="divide-y divide-border/50">
-                {recentSignals.slice(0, 4).map((signal) => (
-                  <RecentSignalRow key={signal.id} signal={signal} />
-                ))}
-              </div>
+              recentSignals.map((signal) => (
+                <RecentSignalRow key={signal.id} signal={signal} />
+              ))
             ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Radio className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                <p className="text-sm text-muted-foreground">No signals yet</p>
-                <p className="text-xs text-muted-foreground/70">
-                  Upload research data to detect pain signals
-                </p>
-              </div>
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No signals yet. Upload research data from the Ingest page.
+              </p>
             )}
           </CardContent>
         </Card>
       </div>
-
-      <VerticalIntelligencePanel />
-
-      <EmergingClustersPanel />
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <CardTitle className="text-base font-semibold">System Workflow</CardTitle>
-          <Badge variant="outline" className="text-xs">
-            <Calendar className="h-3 w-3 mr-1" />
-            3 Stages
-          </Badge>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                1
-              </div>
-              <div>
-                <h3 className="font-medium text-sm">Signal Detection</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  ICP-qualified pain discovery from research sources. Looks for coordination + turnover pain, not AI interest.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                2
-              </div>
-              <div>
-                <h3 className="font-medium text-sm">Lead Scoring + Routing</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Score leads 1-5 based on pain signals. Route to the best AI Employee for their specific problem.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                3
-              </div>
-              <div>
-                <h3 className="font-medium text-sm">Dual Output</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Export to Google Sheets for outreach. Generate weekly content inputs for ContentLayerOS.
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -1,0 +1,133 @@
+When the Weekly Vertical Engine selects a vertical:
+
+Persist it in memory as selectedVertical
+
+Show it across all pages as a top system banner
+
+2. Global Vertical Banner (Persistent Across App)
+
+At the very top of every page (Dashboard, Signals, Leads, Content, Ingest):
+
+Add a thin but visually dominant banner:
+
+“🎯 Weekly Focus: {Industry Name}”
+Subtext:
+“Primary AI Demand: {AI Employee}”
+
+Include:
+
+“Change Focus” button
+
+“Lock Vertical” toggle (manual override)
+
+Date selected
+
+If no vertical is selected:
+Show:
+“No vertical focus yet. Ingest signals to activate.”
+
+3. Vertical Filter Defaults
+
+When a Weekly Vertical is active:
+
+Signals page auto-filters to selected vertical
+
+Leads page auto-filters to selected vertical
+
+Content page auto-generates content ONLY for selected vertical
+
+Export to Sheets defaults to selected vertical
+
+Add a visible “Viewing: Weekly Vertical Only” indicator.
+
+Allow manual override filter but default back to vertical focus.
+
+4. Content Mode Adjustment
+
+When generating weekly content:
+
+Inject this instruction into the content generation prompt:
+
+“You are generating content ONLY for operators in the {selectedVertical.industry} industry. Use real pain quotes from this vertical. Make the pain specific to their workflows.”
+
+Remove generic SMB language.
+
+Make vertical specificity mandatory.
+
+5. Vertical Density Meter
+
+On Dashboard:
+
+Replace empty center panel with:
+
+VERTICAL DOMINANCE PANEL
+
+Show:
+
+Total signals in selected vertical
+
+Average pain score
+
+Growth rate (7d vs prior 7d)
+
+% of all signals belonging to this vertical
+
+“Cluster Strength” indicator:
+
+Weak
+
+Forming
+
+Dominant
+
+If one vertical exceeds 35% of signals:
+Show:
+“🔥 Vertical Breakout Detected”
+
+6. Cluster Lock Mode
+
+Add button:
+
+“Commit to This Vertical”
+
+When clicked:
+
+System locks vertical for 14 days
+
+Adds a tag to all exported leads:
+“WAVE_1_{industry}”
+
+Adds note to content generation:
+“You are in vertical domination mode.”
+
+7. Rename Sections for Identity Shift
+
+Change labels:
+
+“Vertical Intelligence” → “Vertical Domination”
+“Emerging Clusters” → “Cluster Radar”
+“Signals” → “Pain Signals”
+“Leads” → “Operator Targets”
+
+8. Add Vertical Strategy Output
+
+When vertical is selected, auto-generate:
+
+Suggested lead magnet title
+
+Suggested cold email hook
+
+Suggested LinkedIn post hook
+
+Suggested demo framing angle
+
+Display in Weekly Focus Panel.
+
+Do NOT change backend storage structure beyond selectedVertical state.
+
+Preserve in-memory logic.
+
+Keep UI consistent with existing Tailwind / Shadcn style.
+
+Goal:
+SignalLayerOS should now feel like a vertical conquest machine, not a neutral signal dashboard.
