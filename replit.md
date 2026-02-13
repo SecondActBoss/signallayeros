@@ -96,10 +96,31 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
   - Returns top 10 industries sorted by totalPainScore DESC, tie-breaker countScore5 DESC
   - Includes dominant pain signal per industry
 
+### Vertical Cluster Detection
+- `GET /api/verticals/clusters` - Detect industries with rapidly increasing pain signals
+  - **Cluster Criteria** (all must be met):
+    - >= 5 leads in last 14 days (windowA)
+    - Average score >= 3.5
+    - At least 2 score-5 leads
+    - Growth rate > 50% vs previous 14 days (windowB = 14-28 days ago)
+  - **Growth Rate**: `(windowA - windowB) / max(windowB, 1)`
+  - **ClusterStrength**:
+    - High = avgScore > 4 AND score5Count >= 3
+    - Medium = avgScore > 3.5
+    - Emerging = growthRate > 1 but lower scores
+  - Sorted by strength (High > Medium > Emerging), then avgScore DESC
+
+### Focused Vertical
+- `GET /api/verticals/focus` - Get current focused vertical
+  - Returns `{ focusedVertical: string | null }`
+- `POST /api/verticals/focus` - Set focused vertical for content generation
+  - **Body**: `{ "industry": "Veterinary Clinics" }` (or null to clear)
+  - Automatically injected into ContentLayerOS generation prompts as `[Vertical Focus: ...]` tag
+
 ### Content
 - `GET /api/insights` - All content insights
 - `GET /api/content-runs` - All weekly content runs
-- `POST /api/content-runs/generate` - Generate weekly LinkedIn + X drafts
+- `POST /api/content-runs/generate` - Generate weekly LinkedIn + X drafts (includes focused vertical tag if set)
 - `POST /api/content-layer/ingest` - ContentLayerOS ingestion endpoint
 
 ## Lead Scoring Model

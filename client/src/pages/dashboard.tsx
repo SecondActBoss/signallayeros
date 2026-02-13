@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,12 @@ import {
   Zap,
   BarChart3,
   Flame,
+  Target,
+  ArrowUp,
+  X,
 } from "lucide-react";
 import { useState } from "react";
+import { apiRequest } from "@/lib/queryClient";
 import type { Stats, ScoredLead, Signal } from "@shared/schema";
 
 type VerticalRank = {
@@ -25,6 +29,15 @@ type VerticalRank = {
   countScore5: number;
   countScore4Plus: number;
   dominantPainSignal: string;
+};
+
+type VerticalCluster = {
+  industry: string;
+  leadsLast14Days: number;
+  growthRate: number;
+  avgScore: number;
+  score5Count: number;
+  clusterStrength: "High" | "Medium" | "Emerging";
 };
 
 function StatCard({
@@ -116,6 +129,132 @@ function painSignalColor(signal: string): string {
     case "Revenue Proximity": return "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
     default: return "bg-muted text-muted-foreground";
   }
+}
+
+function clusterStrengthBadge(strength: "High" | "Medium" | "Emerging") {
+  switch (strength) {
+    case "High":
+      return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "Medium":
+      return "bg-amber-500/20 text-amber-400 border-amber-500/30";
+    case "Emerging":
+      return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+  }
+}
+
+function EmergingClustersPanel() {
+  const queryClient = useQueryClient();
+
+  const { data: clusters, isLoading } = useQuery<VerticalCluster[]>({
+    queryKey: ["/api/verticals/clusters"],
+  });
+
+  const { data: focusData } = useQuery<{ focusedVertical: string | null }>({
+    queryKey: ["/api/verticals/focus"],
+  });
+
+  const focusMutation = useMutation({
+    mutationFn: async (industry: string | null) => {
+      await apiRequest("POST", "/api/verticals/focus", { industry });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/verticals/focus"] });
+    },
+  });
+
+  const focusedVertical = focusData?.focusedVertical ?? null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-base font-semibold">Emerging Clusters</CardTitle>
+          <Badge variant="outline" className="text-xs">
+            <Target className="h-3 w-3 mr-1" />
+            Radar
+          </Badge>
+        </div>
+        {focusedVertical && (
+          <div className="flex items-center gap-1.5">
+            <Badge className="bg-primary/20 text-primary border-primary/30 text-xs gap-1">
+              <Target className="h-3 w-3" />
+              Focused: {focusedVertical}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => focusMutation.mutate(null)}
+              data-testid="button-clear-focus"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-4 py-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-3 flex-1" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+            ))}
+          </div>
+        ) : clusters && clusters.length > 0 ? (
+          <div className="space-y-3">
+            {clusters.map((c) => (
+              <div
+                key={c.industry}
+                className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/50 border border-border/50"
+                data-testid={`cluster-row-${c.industry}`}
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex items-center gap-1 text-emerald-500 flex-shrink-0">
+                    <ArrowUp className="h-4 w-4" />
+                    <span className="text-xs font-semibold">
+                      {c.growthRate > 0 ? "+" : ""}{Math.round(c.growthRate * 100)}%
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="font-medium text-sm truncate block">{c.industry}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {c.leadsLast14Days} leads · avg {c.avgScore} · {c.score5Count} score-5
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Badge variant="outline" className={`text-xs ${clusterStrengthBadge(c.clusterStrength)}`}>
+                    {c.clusterStrength}
+                  </Badge>
+                  <Button
+                    variant={focusedVertical === c.industry ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => focusMutation.mutate(focusedVertical === c.industry ? null : c.industry)}
+                    disabled={focusMutation.isPending}
+                    data-testid={`button-focus-${c.industry}`}
+                  >
+                    {focusedVertical === c.industry ? "Focused" : "Focus This Vertical"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Target className="h-10 w-10 text-muted-foreground/30 mb-3" />
+            <p className="text-sm text-muted-foreground">No clusters detected yet</p>
+            <p className="text-xs text-muted-foreground/70">
+              Clusters form when an industry has 5+ leads, avg score 3.5+, and 50%+ growth in 14 days
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function VerticalIntelligencePanel() {
@@ -374,6 +513,8 @@ export default function Dashboard() {
       </div>
 
       <VerticalIntelligencePanel />
+
+      <EmergingClustersPanel />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">

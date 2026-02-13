@@ -383,15 +383,17 @@ export function generateInsight(signal: Signal, lead: ScoredLead): Omit<Insight,
 
 export function generateContentDrafts(
   insights: Insight[],
-  contexts: ("ICP" | "Positioning" | "Be Contrary")[]
+  contexts: ("ICP" | "Positioning" | "Be Contrary")[],
+  focusedVertical?: string | null
 ): {
   linkedInDrafts: { id: string; content: string; theme: string; angle: string }[];
   xDrafts: { id: string; content: string; theme: string; angle: string }[];
 } {
   const linkedInDrafts: { id: string; content: string; theme: string; angle: string }[] = [];
   const xDrafts: { id: string; content: string; theme: string; angle: string }[] = [];
+
+  const verticalTag = focusedVertical ? `\n\n[Vertical Focus: ${focusedVertical}]` : "";
   
-  // Group insights by theme
   const byTheme: Record<string, Insight[]> = {};
   for (const insight of insights) {
     if (!byTheme[insight.insightTheme]) {
@@ -400,7 +402,6 @@ export function generateContentDrafts(
     byTheme[insight.insightTheme].push(insight);
   }
   
-  // Generate LinkedIn drafts (2)
   let linkedInCount = 0;
   for (const [theme, themeInsights] of Object.entries(byTheme)) {
     if (linkedInCount >= 2) break;
@@ -416,13 +417,13 @@ export function generateContentDrafts(
     }
     
     if (angle === "contrarian") {
-      content = `The hard truth most operators won't admit:\n\n"${insight.rawPainLanguage}"\n\nYou don't need another hire.\nYou need work that runs without you.\n\nThe fix isn't more people.\nIt's removing yourself from the loop.`;
+      content = `The hard truth most operators won't admit:\n\n"${insight.rawPainLanguage}"\n\nYou don't need another hire.\nYou need work that runs without you.\n\nThe fix isn't more people.\nIt's removing yourself from the loop.${verticalTag}`;
     } else if (angle === "story") {
-      content = `Real talk from an operator:\n\n"${insight.rawPainLanguage}"\n\nThis isn't about AI.\nIt's about ${insight.operatorEmotion} operators who can't scale past themselves.\n\n${insight.agentLayerOSAngle}`;
+      content = `Real talk from an operator:\n\n"${insight.rawPainLanguage}"\n\nThis isn't about AI.\nIt's about ${insight.operatorEmotion} operators who can't scale past themselves.\n\n${insight.agentLayerOSAngle}${verticalTag}`;
     } else if (angle === "lesson") {
-      content = `Pattern I keep seeing:\n\n${insight.normalizedProblem}\n\nThe symptom: "${insight.rawPainLanguage}"\n\nThe lesson: Relief comes from removing dependency, not adding capacity.`;
+      content = `Pattern I keep seeing:\n\n${insight.normalizedProblem}\n\nThe symptom: "${insight.rawPainLanguage}"\n\nThe lesson: Relief comes from removing dependency, not adding capacity.${verticalTag}`;
     } else {
-      content = `Quiet win for operators:\n\n${insight.normalizedProblem}\n\n${insight.agentLayerOSAngle}\n\nNo hype. Just work that happens.`;
+      content = `Quiet win for operators:\n\n${insight.normalizedProblem}\n\n${insight.agentLayerOSAngle}\n\nNo hype. Just work that happens.${verticalTag}`;
     }
     
     linkedInDrafts.push({
@@ -434,7 +435,6 @@ export function generateContentDrafts(
     linkedInCount++;
   }
   
-  // Generate X drafts (2)
   let xCount = 0;
   for (const [theme, themeInsights] of Object.entries(byTheme)) {
     if (xCount >= 2) break;
@@ -445,13 +445,13 @@ export function generateContentDrafts(
     let content = "";
     
     if (angle === "contrarian") {
-      content = `Operators don't need more hires.\n\nThey need work that runs without them.\n\n"${insight.rawPainLanguage.slice(0, 80)}..."`;
+      content = `Operators don't need more hires.\n\nThey need work that runs without them.\n\n"${insight.rawPainLanguage.slice(0, 80)}..."${verticalTag}`;
     } else if (angle === "story") {
-      content = `"${insight.rawPainLanguage.slice(0, 100)}..."\n\nThis is what ${insight.operatorEmotion} looks like.`;
+      content = `"${insight.rawPainLanguage.slice(0, 100)}..."\n\nThis is what ${insight.operatorEmotion} looks like.${verticalTag}`;
     } else if (angle === "lesson") {
-      content = `Pattern:\n${insight.normalizedProblem}\n\nFix:\n${insight.agentLayerOSAngle.slice(0, 80)}`;
+      content = `Pattern:\n${insight.normalizedProblem}\n\nFix:\n${insight.agentLayerOSAngle.slice(0, 80)}${verticalTag}`;
     } else {
-      content = `Quiet win:\n\n${insight.normalizedProblem}\n\nNo hype. Just relief.`;
+      content = `Quiet win:\n\n${insight.normalizedProblem}\n\nNo hype. Just relief.${verticalTag}`;
     }
     
     xDrafts.push({

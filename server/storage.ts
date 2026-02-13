@@ -38,6 +38,10 @@ export interface IStorage {
   
   // Stats
   getStats(): Promise<Stats>;
+
+  // Focused Vertical
+  getFocusedVertical(): Promise<string | null>;
+  setFocusedVertical(industry: string | null): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -45,12 +49,14 @@ export class MemStorage implements IStorage {
   private leads: Map<string, ScoredLead>;
   private insights: Map<string, Insight>;
   private contentRuns: Map<string, ContentRun>;
+  private focusedVertical: string | null;
 
   constructor() {
     this.signals = new Map();
     this.leads = new Map();
     this.insights = new Map();
     this.contentRuns = new Map();
+    this.focusedVertical = null;
   }
 
   // Signals
@@ -198,6 +204,15 @@ export class MemStorage implements IStorage {
       contentInsights: this.insights.size,
       contentRuns: this.contentRuns.size,
     };
+  }
+
+  // Focused Vertical
+  async getFocusedVertical(): Promise<string | null> {
+    return this.focusedVertical;
+  }
+
+  async setFocusedVertical(industry: string | null): Promise<void> {
+    this.focusedVertical = industry;
   }
 }
 

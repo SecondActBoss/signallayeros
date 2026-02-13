@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { scoreAndRouteSignal, generateInsight, generateContentDrafts } from "./scoring";
-import { insertSignalSchema, bulkSignalImportSchema } from "@shared/schema";
+import { insertSignalSchema, bulkSignalImportSchema, type ScoredLead } from "@shared/schema";
 import { z } from "zod";
 import { appendToSheet } from "./googleSheets";
 
@@ -291,7 +291,6 @@ export async function registerRoutes(
 
   app.post("/api/content-runs/generate", async (req, res) => {
     try {
-      // Get insights from last 7 days
       const now = new Date();
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       
@@ -300,7 +299,6 @@ export async function registerRoutes(
         now.toISOString()
       );
       
-      // If no recent insights, get all available
       const allInsights = insights.length > 0 ? insights : await storage.getInsights();
       
       if (allInsights.length === 0) {
@@ -308,13 +306,12 @@ export async function registerRoutes(
         return;
       }
       
-      // Default contexts
       const contexts: ("ICP" | "Positioning" | "Be Contrary")[] = ["ICP", "Positioning"];
       
-      // Generate content drafts
-      const { linkedInDrafts, xDrafts } = generateContentDrafts(allInsights, contexts);
+      const focusedVertical = await storage.getFocusedVertical();
       
-      // Create content run
+      const { linkedInDrafts, xDrafts } = generateContentDrafts(allInsights, contexts, focusedVertical);
+      
       const run = await storage.createContentRun({
         runDate: now.toISOString(),
         insightIds: allInsights.map((i) => i.id),
@@ -324,7 +321,7 @@ export async function registerRoutes(
         status: "completed",
       });
       
-      res.json(run);
+      res.json({ ...run, focusedVertical });
     } catch (error) {
       res.status(500).json({ message: "Failed to generate content" });
     }
@@ -390,6 +387,106 @@ export async function registerRoutes(
       res.json(ranked);
     } catch (error) {
       res.status(500).json({ message: "Failed to rank verticals" });
+    }
+  });
+
+  // Vertical Cluster Detection
+  app.get("/api/verticals/clusters", async (req, res) => {
+    try {
+      const leads = await storage.getLeads();
+      const now = Date.now();
+      const day = 24 * 60 * 60 * 1000;
+      const cutoffA = new Date(now - 14 * day);
+      const cutoffB = new Date(now - 28 * day);
+
+      const industryMap: Record<string, { windowA: ScoredLead[]; windowB: ScoredLead[] }> = {};
+
+      for (const lead of leads) {
+        const industry = lead.industry || "Unknown";
+        if (!industryMap[industry]) {
+          industryMap[industry] = { windowA: [], windowB: [] };
+        }
+        const created = new Date(lead.createdAt);
+        if (created >= cutoffA) {
+          industryMap[industry].windowA.push(lead);
+        } else if (created >= cutoffB) {
+          industryMap[industry].windowB.push(lead);
+        }
+      }
+
+      type ClusterResult = {
+        industry: string;
+        leadsLast14Days: number;
+        growthRate: number;
+        avgScore: number;
+        score5Count: number;
+        clusterStrength: "High" | "Medium" | "Emerging";
+      };
+
+      const clusters: ClusterResult[] = [];
+
+      for (const [industry, windows] of Object.entries(industryMap)) {
+        const countA = windows.windowA.length;
+        const countB = windows.windowB.length;
+        const growthRate = (countA - countB) / Math.max(countB, 1);
+        const avgScore = countA > 0
+          ? Math.round((windows.windowA.reduce((s, l) => s + l.confidenceScore, 0) / countA) * 10) / 10
+          : 0;
+        const score5Count = windows.windowA.filter((l) => l.confidenceScore === 5).length;
+
+        const meetsThreshold = countA >= 5 && avgScore >= 3.5 && score5Count >= 2 && growthRate > 0.5;
+
+        if (!meetsThreshold) continue;
+
+        let clusterStrength: "High" | "Medium" | "Emerging";
+        if (avgScore > 4 && score5Count >= 3) {
+          clusterStrength = "High";
+        } else if (avgScore > 3.5 && growthRate <= 1) {
+          clusterStrength = "Medium";
+        } else if (growthRate > 1) {
+          clusterStrength = avgScore > 4 ? "High" : "Emerging";
+        } else {
+          clusterStrength = "Medium";
+        }
+
+        clusters.push({
+          industry,
+          leadsLast14Days: countA,
+          growthRate: Math.round(growthRate * 100) / 100,
+          avgScore,
+          score5Count,
+          clusterStrength,
+        });
+      }
+
+      clusters.sort((a, b) => {
+        const strengthOrder = { High: 0, Medium: 1, Emerging: 2 };
+        return strengthOrder[a.clusterStrength] - strengthOrder[b.clusterStrength] || b.avgScore - a.avgScore;
+      });
+
+      res.json(clusters);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to detect clusters" });
+    }
+  });
+
+  // Focused Vertical
+  app.get("/api/verticals/focus", async (req, res) => {
+    try {
+      const focused = await storage.getFocusedVertical();
+      res.json({ focusedVertical: focused });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get focused vertical" });
+    }
+  });
+
+  app.post("/api/verticals/focus", async (req, res) => {
+    try {
+      const { industry } = req.body;
+      await storage.setFocusedVertical(industry || null);
+      res.json({ focusedVertical: industry || null });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to set focused vertical" });
     }
   });
 
