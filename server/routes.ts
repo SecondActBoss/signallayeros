@@ -330,6 +330,69 @@ export async function registerRoutes(
     }
   });
 
+  // Vertical Intelligence ranking
+  app.get("/api/verticals/rank", async (req, res) => {
+    try {
+      const leads = await storage.getLeads();
+      const timeRange = req.query.range as string | undefined;
+      
+      let filteredLeads = leads;
+      if (timeRange === "7d") {
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        filteredLeads = leads.filter((l) => new Date(l.createdAt) >= cutoff);
+      } else if (timeRange === "30d") {
+        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        filteredLeads = leads.filter((l) => new Date(l.createdAt) >= cutoff);
+      }
+
+      const industryMap: Record<string, {
+        totalLeads: number;
+        totalPainScore: number;
+        countScore5: number;
+        countScore4Plus: number;
+        painCounts: Record<string, number>;
+      }> = {};
+
+      for (const lead of filteredLeads) {
+        const industry = lead.industry || "Unknown";
+        if (!industryMap[industry]) {
+          industryMap[industry] = { totalLeads: 0, totalPainScore: 0, countScore5: 0, countScore4Plus: 0, painCounts: {} };
+        }
+        const entry = industryMap[industry];
+        entry.totalLeads++;
+        entry.totalPainScore += lead.confidenceScore;
+        if (lead.confidenceScore === 5) entry.countScore5++;
+        if (lead.confidenceScore >= 4) entry.countScore4Plus++;
+
+        if (lead.hasCoordinationOverload) entry.painCounts["Coordination Overload"] = (entry.painCounts["Coordination Overload"] || 0) + 1;
+        if (lead.hasTurnoverFragility) entry.painCounts["Turnover Fragility"] = (entry.painCounts["Turnover Fragility"] || 0) + 1;
+        if (lead.hasInboundFriction) entry.painCounts["Inbound Friction"] = (entry.painCounts["Inbound Friction"] || 0) + 1;
+        if (lead.hasRevenueProximity) entry.painCounts["Revenue Proximity"] = (entry.painCounts["Revenue Proximity"] || 0) + 1;
+      }
+
+      const ranked = Object.entries(industryMap)
+        .map(([industry, data]) => {
+          const painEntries = Object.entries(data.painCounts);
+          painEntries.sort((a, b) => b[1] - a[1]);
+          return {
+            industry,
+            totalLeads: data.totalLeads,
+            totalPainScore: data.totalPainScore,
+            avgPainScore: Math.round((data.totalPainScore / data.totalLeads) * 10) / 10,
+            countScore5: data.countScore5,
+            countScore4Plus: data.countScore4Plus,
+            dominantPainSignal: painEntries.length > 0 ? painEntries[0][0] : "None",
+          };
+        })
+        .sort((a, b) => b.totalPainScore - a.totalPainScore || b.countScore5 - a.countScore5)
+        .slice(0, 10);
+
+      res.json(ranked);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to rank verticals" });
+    }
+  });
+
   // ContentLayerOS ingestion endpoint
   app.post("/api/content-layer/ingest", async (req, res) => {
     try {

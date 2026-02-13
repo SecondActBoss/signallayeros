@@ -89,6 +89,13 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
   - Automatically adds headers on first export
   - Marks exported leads to avoid duplicates
 
+### Vertical Intelligence
+- `GET /api/verticals/rank` - Ranked industries by aggregated pain score
+  - **Query params**: `?range=7d|30d` (optional, defaults to all time)
+  - Groups leads by industry, calculates total/avg pain scores, counts Score 5 and 4+ leads
+  - Returns top 10 industries sorted by totalPainScore DESC, tie-breaker countScore5 DESC
+  - Includes dominant pain signal per industry
+
 ### Content
 - `GET /api/insights` - All content insights
 - `GET /api/content-runs` - All weekly content runs
