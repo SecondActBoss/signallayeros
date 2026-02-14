@@ -51,10 +51,8 @@ export default function CoverPage({ onEnter }: { onEnter: () => void }) {
         </div>
 
         <div className="mt-16 pt-8 border-t border-white/[0.06]">
-          <p className="text-xs sm:text-sm text-white/40 leading-relaxed">
-            If you're an operator interested in how we identify
-            <br className="hidden sm:block" />
-            {" "}coordination pain before anyone else does, reach out at:
+          <p className="text-xs sm:text-sm text-white/50 leading-relaxed">
+            We don't guess. We detect coordination breakdown before revenue feels it.
           </p>
           <a
             href="mailto:laura@agentlayeros.com"
