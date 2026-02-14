@@ -166,9 +166,25 @@ export async function registerRoutes(
         }
       }
       
-      console.log(`[External Ingest] Source: ${sourceName}, Created: ${signalsCreated}, Duplicates: ${duplicatesSkipped}`);
+      const timestamp = new Date().toISOString();
+      console.log(`\n========== INGESTION LOG ==========`);
+      console.log(`Timestamp:    ${timestamp}`);
+      console.log(`Source:       ${sourceName}`);
+      console.log(`Received:     ${signals.length} signals`);
+      console.log(`Created:      ${signalsCreated}`);
+      console.log(`Duplicates:   ${duplicatesSkipped}`);
+      console.log(`Leads:        ${leadsCreated}`);
+      console.log(`Insights:     ${insightsCreated}`);
+      if (errors.length > 0) {
+        console.log(`Errors:       ${errors.length}`);
+        errors.forEach((e, i) => console.log(`  [${i + 1}] ${e}`));
+      }
+      console.log(`===================================\n`);
       
       res.json({ 
+        timestamp,
+        source: sourceName,
+        signalsReceived: signals.length,
         signalsCreated, 
         duplicatesSkipped,
         leadsCreated, 
