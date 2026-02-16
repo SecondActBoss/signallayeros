@@ -55,6 +55,7 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
 | `/signals` | Signals | View all detected pain signals |
 | `/leads` | Leads | Scored leads with AI Employee routing |
 | `/content` | Content | Insights and weekly content runs |
+| `/prospects` | Prospects | Volume-based vertical list-build outreach engine |
 | `/ingest` | Ingest | Upload research data (JSON or single form) |
 
 ## API Endpoints
@@ -88,6 +89,18 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
   - Requires Google Sheets integration to be connected
   - Automatically adds headers on first export
   - Marks exported leads to avoid duplicates
+
+### Prospects (Volume GTM Layer)
+- `GET /api/prospects` - All prospects (filterable by verticalTag & status query params)
+- `POST /api/prospects` - Create single prospect
+- `PATCH /api/prospects/:id` - Update status or notes
+- `POST /api/prospects/bulk` - Bulk import JSON array
+  - External: requires `X-API-Key` header matching `INGEST_API_KEY`
+  - Internal (UI): works without API key
+  - Body: `{ "prospects": [...] }`
+- `POST /api/prospects/export` - Export prospects to Google Sheets
+  - **Body**: `{ "spreadsheetId": "your-sheet-id" }`
+  - Columns: companyName, ownerName, email, industry, companySizeEstimate, location, status, source, dateAdded
 
 ### Vertical Intelligence
 - `GET /api/verticals/rank` - Ranked industries by aggregated pain score
@@ -216,6 +229,7 @@ client/src/
 │   ├── signals.tsx          # Signals view
 │   ├── leads.tsx            # Leads view
 │   ├── content.tsx          # Content insights
+│   ├── prospects.tsx        # Prospect list (volume GTM)
 │   └── ingest.tsx           # Data ingestion
 └── App.tsx                  # Main app with routing
 

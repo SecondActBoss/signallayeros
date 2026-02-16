@@ -6,6 +6,7 @@ import {
   FileText,
   Upload,
   Layers,
+  Building2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,6 +36,11 @@ const navigationItems = [
     title: "Operator Targets",
     url: "/leads",
     icon: Users,
+  },
+  {
+    title: "Prospects",
+    url: "/prospects",
+    icon: Building2,
   },
   {
     title: "Content",

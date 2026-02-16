@@ -8,6 +8,8 @@ import type {
   ContentRun,
   Stats,
   FocusedVertical,
+  Prospect,
+  InsertProspect,
 } from "@shared/schema";
 import { AI_EMPLOYEES } from "@shared/schema";
 
@@ -43,6 +45,13 @@ export interface IStorage {
   // Focused Vertical
   getFocusedVertical(): Promise<FocusedVertical | null>;
   setFocusedVertical(vertical: FocusedVertical | null): Promise<void>;
+
+  // Prospects
+  getProspects(filters?: { verticalTag?: string; status?: string }): Promise<Prospect[]>;
+  getProspect(id: string): Promise<Prospect | undefined>;
+  createProspect(prospect: InsertProspect): Promise<Prospect>;
+  updateProspect(id: string, updates: Partial<Pick<Prospect, "status" | "notes">>): Promise<Prospect | undefined>;
+  markProspectsExported(ids: string[]): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -51,6 +60,7 @@ export class MemStorage implements IStorage {
   private insights: Map<string, Insight>;
   private contentRuns: Map<string, ContentRun>;
   private focusedVertical: FocusedVertical | null;
+  private prospects: Map<string, Prospect>;
 
   constructor() {
     this.signals = new Map();
@@ -58,6 +68,7 @@ export class MemStorage implements IStorage {
     this.insights = new Map();
     this.contentRuns = new Map();
     this.focusedVertical = null;
+    this.prospects = new Map();
   }
 
   // Signals
@@ -220,6 +231,53 @@ export class MemStorage implements IStorage {
 
   async setFocusedVertical(vertical: FocusedVertical | null): Promise<void> {
     this.focusedVertical = vertical;
+  }
+
+  // Prospects
+  async getProspects(filters?: { verticalTag?: string; status?: string }): Promise<Prospect[]> {
+    let results = Array.from(this.prospects.values());
+    if (filters?.verticalTag) {
+      results = results.filter((p) => p.verticalTag.toLowerCase() === filters.verticalTag!.toLowerCase());
+    }
+    if (filters?.status) {
+      results = results.filter((p) => p.status === filters.status);
+    }
+    return results.sort(
+      (a, b) => new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime()
+    );
+  }
+
+  async getProspect(id: string): Promise<Prospect | undefined> {
+    return this.prospects.get(id);
+  }
+
+  async createProspect(insert: InsertProspect): Promise<Prospect> {
+    const id = randomUUID();
+    const prospect: Prospect = {
+      ...insert,
+      id,
+      dateAdded: new Date().toISOString(),
+      exportedToSheets: false,
+    };
+    this.prospects.set(id, prospect);
+    return prospect;
+  }
+
+  async updateProspect(id: string, updates: Partial<Pick<Prospect, "status" | "notes">>): Promise<Prospect | undefined> {
+    const prospect = this.prospects.get(id);
+    if (!prospect) return undefined;
+    const updated = { ...prospect, ...updates };
+    this.prospects.set(id, updated);
+    return updated;
+  }
+
+  async markProspectsExported(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      const prospect = this.prospects.get(id);
+      if (prospect) {
+        this.prospects.set(id, { ...prospect, exportedToSheets: true });
+      }
+    }
   }
 }
 

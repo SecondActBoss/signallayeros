@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { scoreAndRouteSignal, generateInsight, generateContentDrafts } from "./scoring";
-import { insertSignalSchema, bulkSignalImportSchema, type ScoredLead, type FocusedVertical } from "@shared/schema";
+import { insertSignalSchema, bulkSignalImportSchema, insertProspectSchema, bulkProspectImportSchema, type ScoredLead, type FocusedVertical } from "@shared/schema";
 import { z } from "zod";
 import { appendToSheet } from "./googleSheets";
 
@@ -883,6 +883,154 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Density error:", error);
       res.status(500).json({ message: "Failed to get vertical density" });
+    }
+  });
+
+  // ===== PROSPECTS (Vertical List-Build Layer) =====
+
+  app.get("/api/prospects", async (req, res) => {
+    try {
+      const verticalTag = req.query.verticalTag as string | undefined;
+      const status = req.query.status as string | undefined;
+      const prospects = await storage.getProspects({ verticalTag, status });
+      res.json(prospects);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch prospects" });
+    }
+  });
+
+  app.post("/api/prospects", async (req, res) => {
+    try {
+      const parsed = insertProspectSchema.parse(req.body);
+      const prospect = await storage.createProspect(parsed);
+      res.json(prospect);
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        res.status(400).json({ message: "Validation error", errors: error.errors });
+        return;
+      }
+      res.status(500).json({ message: "Failed to create prospect" });
+    }
+  });
+
+  app.patch("/api/prospects/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes } = req.body;
+      const updated = await storage.updateProspect(id, { status, notes });
+      if (!updated) {
+        res.status(404).json({ message: "Prospect not found" });
+        return;
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update prospect" });
+    }
+  });
+
+  app.post("/api/prospects/bulk", async (req, res) => {
+    try {
+      const apiKey = req.headers["x-api-key"];
+      if (!apiKey || apiKey !== process.env.INGEST_API_KEY) {
+        res.status(401).json({ message: "Invalid or missing API key" });
+        return;
+      }
+
+      const parsed = bulkProspectImportSchema.parse(req.body);
+      const source = (req.headers["x-source"] as string) || "Manus List Build";
+
+      let created = 0;
+      for (const p of parsed.prospects) {
+        await storage.createProspect({ ...p, source: p.source || source });
+        created++;
+      }
+
+      console.log(`[PROSPECT BULK] source=${source} | received=${parsed.prospects.length} | created=${created}`);
+      res.json({ prospectsCreated: created, source });
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        res.status(400).json({ message: "Validation error", errors: error.errors });
+        return;
+      }
+      res.status(500).json({ message: "Failed to bulk import prospects" });
+    }
+  });
+
+  app.post("/api/prospects/import", async (req, res) => {
+    try {
+      const parsed = bulkProspectImportSchema.parse(req.body);
+
+      let created = 0;
+      for (const p of parsed.prospects) {
+        await storage.createProspect({ ...p, source: p.source || "Manual Import" });
+        created++;
+      }
+
+      res.json({ prospectsCreated: created, source: "Manual Import" });
+    } catch (error: any) {
+      if (error?.name === "ZodError") {
+        res.status(400).json({ message: "Validation error", errors: error.errors });
+        return;
+      }
+      res.status(500).json({ message: "Failed to import prospects" });
+    }
+  });
+
+  app.post("/api/prospects/export", async (req, res) => {
+    try {
+      const { spreadsheetId } = req.body;
+      if (!spreadsheetId) {
+        res.status(400).json({ message: "spreadsheetId is required" });
+        return;
+      }
+
+      const focusedVertical = await storage.getFocusedVertical();
+      const activeVertical = focusedVertical?.locked ? focusedVertical.industry : null;
+
+      let prospects = await storage.getProspects(
+        activeVertical ? { verticalTag: activeVertical } : undefined
+      );
+      const unexported = prospects.filter((p) => !p.exportedToSheets);
+
+      if (unexported.length === 0) {
+        res.json({ exportedCount: 0, message: activeVertical ? `No new prospects to export for ${activeVertical}` : "No new prospects to export" });
+        return;
+      }
+
+      const headers = [
+        "Company Name",
+        "Owner Name",
+        "Email",
+        "Industry",
+        "Company Size",
+        "Location",
+        "Status",
+        "Source",
+        "Date Added",
+      ];
+
+      const rows = unexported.map((p) => [
+        p.companyName,
+        p.ownerName,
+        p.email,
+        p.industry,
+        p.companySizeEstimate || "",
+        p.location || "",
+        p.status,
+        p.source,
+        p.dateAdded,
+      ]);
+
+      const allExported = prospects.filter((p) => p.exportedToSheets);
+      const dataToAppend = allExported.length === 0 ? [headers, ...rows] : rows;
+
+      await appendToSheet(spreadsheetId, dataToAppend);
+      await storage.markProspectsExported(unexported.map((p) => p.id));
+
+      res.json({ exportedCount: unexported.length, message: `Exported ${unexported.length} prospects to Google Sheets` });
+    } catch (error: any) {
+      console.error("Prospect export error:", error);
+      res.status(500).json({ message: error.message || "Failed to export prospects" });
     }
   });
 

@@ -16,6 +16,7 @@ import Signals from "@/pages/signals";
 import Leads from "@/pages/leads";
 import Content from "@/pages/content";
 import Ingest from "@/pages/ingest";
+import Prospects from "@/pages/prospects";
 
 function Router() {
   return (
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/signals" component={Signals} />
       <Route path="/leads" component={Leads} />
+      <Route path="/prospects" component={Prospects} />
       <Route path="/content" component={Content} />
       <Route path="/ingest" component={Ingest} />
       <Route component={NotFound} />

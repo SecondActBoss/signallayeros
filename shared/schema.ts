@@ -143,6 +143,48 @@ export const focusedVerticalSchema = z.object({
 
 export type FocusedVertical = z.infer<typeof focusedVerticalSchema>;
 
+// Prospect schema - vertical list-build leads (no pain scoring)
+export const PROSPECT_STATUSES = [
+  "Not Contacted",
+  "Contacted",
+  "Replied",
+  "Demo Booked",
+  "Closed",
+] as const;
+
+export type ProspectStatus = typeof PROSPECT_STATUSES[number];
+
+export const prospectSchema = z.object({
+  id: z.string(),
+  companyName: z.string(),
+  ownerName: z.string(),
+  email: z.string(),
+  phone: z.string().optional(),
+  website: z.string().optional(),
+  linkedinUrl: z.string().optional(),
+  industry: z.string(),
+  companySizeEstimate: z.string().optional(),
+  revenueEstimate: z.string().optional(),
+  location: z.string().optional(),
+  verticalTag: z.string(),
+  source: z.string(),
+  status: z.enum(PROSPECT_STATUSES),
+  notes: z.string().optional(),
+  dateAdded: z.string(),
+  exportedToSheets: z.boolean(),
+});
+
+export const insertProspectSchema = prospectSchema.omit({ id: true, dateAdded: true, exportedToSheets: true });
+
+export type Prospect = z.infer<typeof prospectSchema>;
+export type InsertProspect = z.infer<typeof insertProspectSchema>;
+
+export const bulkProspectImportSchema = z.object({
+  prospects: z.array(insertProspectSchema),
+});
+
+export type BulkProspectImport = z.infer<typeof bulkProspectImportSchema>;
+
 // Keep existing user types for compatibility
 export const users = {
   id: "",
