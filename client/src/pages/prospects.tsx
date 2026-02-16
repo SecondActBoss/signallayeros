@@ -555,7 +555,7 @@ export default function Prospects() {
                 <Input
                   value={spreadsheetId}
                   onChange={(e) => setSpreadsheetId(e.target.value)}
-                  placeholder="Enter Google Sheets spreadsheet ID"
+                  placeholder="Paste Google Sheets URL or spreadsheet ID"
                   data-testid="input-export-sheet-id"
                 />
               </div>

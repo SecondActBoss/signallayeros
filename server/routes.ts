@@ -6,6 +6,12 @@ import { insertSignalSchema, bulkSignalImportSchema, insertProspectSchema, bulkP
 import { z } from "zod";
 import { appendToSheet } from "./googleSheets";
 
+function extractSpreadsheetId(input: string): string {
+  const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  return input.trim();
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -222,12 +228,13 @@ export async function registerRoutes(
 
   app.post("/api/leads/export", async (req, res) => {
     try {
-      const { spreadsheetId, verticalFilter } = req.body;
+      const { spreadsheetId: rawSheetId, verticalFilter } = req.body;
       
-      if (!spreadsheetId) {
+      if (!rawSheetId) {
         res.status(400).json({ message: "Spreadsheet ID is required" });
         return;
       }
+      const spreadsheetId = extractSpreadsheetId(rawSheetId);
       
       const leads = await storage.getLeads();
       const focusedVertical = await storage.getFocusedVertical();
@@ -978,11 +985,12 @@ export async function registerRoutes(
 
   app.post("/api/prospects/export", async (req, res) => {
     try {
-      const { spreadsheetId } = req.body;
-      if (!spreadsheetId) {
+      const { spreadsheetId: rawSheetId } = req.body;
+      if (!rawSheetId) {
         res.status(400).json({ message: "spreadsheetId is required" });
         return;
       }
+      const spreadsheetId = extractSpreadsheetId(rawSheetId);
 
       const focusedVertical = await storage.getFocusedVertical();
       const activeVertical = focusedVertical?.locked ? focusedVertical.industry : null;

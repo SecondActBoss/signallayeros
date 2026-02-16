@@ -347,18 +347,15 @@ export default function Leads() {
                 {focusedVertical && !showAllVerticals ? (
                   <>Exporting <strong>{focusedVertical.industry}</strong> leads only. </>
                 ) : null}
-                Enter your Google Sheet ID to export leads. You can find the ID in your spreadsheet URL:
-                <code className="block mt-2 p-2 bg-muted rounded text-xs break-all">
-                  docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit
-                </code>
+                Paste your Google Sheet URL or ID to export leads.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="spreadsheet-id">Spreadsheet ID</Label>
+                <Label htmlFor="spreadsheet-id">Google Sheet URL or ID</Label>
                 <Input
                   id="spreadsheet-id"
-                  placeholder="e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                  placeholder="Paste Google Sheets URL or spreadsheet ID"
                   value={spreadsheetId}
                   onChange={(e) => setSpreadsheetId(e.target.value)}
                   data-testid="input-spreadsheet-id"
