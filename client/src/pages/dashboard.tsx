@@ -32,9 +32,19 @@ import {
   Presentation,
   AlertTriangle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, createContext, useContext } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Stats, ScoredLead, Signal, FocusedVertical } from "@shared/schema";
+
+type SelectedVerticalState = {
+  selected: VerticalRank | null;
+  setSelected: (v: VerticalRank | null) => void;
+};
+
+const SelectedVerticalCtx = createContext<SelectedVerticalState>({
+  selected: null,
+  setSelected: () => {},
+});
 
 type FocusResponse = {
   focusedVertical: FocusedVertical | null;
@@ -221,6 +231,8 @@ function VerticalDominancePanel() {
     },
   });
 
+  const { selected: manualSelection } = useContext(SelectedVerticalCtx);
+
   const isLoading = densityLoading || focusLoading;
 
   if (isLoading) {
@@ -238,7 +250,7 @@ function VerticalDominancePanel() {
     );
   }
 
-  if (!focus && !focusedVertical) {
+  if (!focus && !focusedVertical && !manualSelection) {
     return (
       <Card className="border-dashed border-muted-foreground/30">
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
@@ -254,48 +266,76 @@ function VerticalDominancePanel() {
     );
   }
 
+  const isManualOverride = manualSelection !== null;
+  const displayIndustry = isManualOverride ? manualSelection.industry : focus?.industry;
+  const displayLeads = isManualOverride ? manualSelection.totalLeads : focus?.totalLeads;
+  const displayAvgScore = isManualOverride ? manualSelection.avgPainScore : focus?.avgScore;
+  const displayGrowthRate = focus?.growthRate ?? 0;
+  const displayPainSignal = isManualOverride ? manualSelection.dominantPainSignal : focus?.dominantPainSignal;
+  const displayAIAgent = focus?.primaryAIAgentDemand;
+  const displayReason = isManualOverride
+    ? `Manually selected — ${manualSelection.totalPainScore} total pain score, ${manualSelection.countScore5} score-5 leads`
+    : focus?.reasonSelected;
+
   const activateVertical = () => {
-    if (focus) {
+    if (displayIndustry) {
       setFocusMutation.mutate({
-        industry: focus.industry,
-        reason: focus.reasonSelected,
-        primaryAIEmployee: focus.primaryAIAgentDemand,
-        dominantPainSignal: focus.dominantPainSignal,
-        totalLeads: focus.totalLeads,
-        avgScore: focus.avgScore,
-        growthRate: focus.growthRate,
+        industry: displayIndustry,
+        reason: displayReason || "Manually selected vertical",
+        primaryAIEmployee: displayAIAgent || "Inbound Revenue Agent",
+        dominantPainSignal: displayPainSignal || "Coordination Overload",
+        totalLeads: displayLeads || 0,
+        avgScore: displayAvgScore || 0,
+        growthRate: displayGrowthRate,
       });
     }
   };
 
-  if (focus && !focusedVertical) {
+  if ((focus || isManualOverride) && !focusedVertical) {
     return (
       <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent" data-testid="weekly-focus-panel">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Crown className="h-5 w-5 text-primary" />
-            <CardTitle className="text-base font-semibold">Recommended Vertical</CardTitle>
+            <CardTitle className="text-base font-semibold">
+              {isManualOverride ? "Selected Vertical" : "Recommended Vertical"}
+            </CardTitle>
+            {isManualOverride && (
+              <Badge className="bg-primary/20 text-primary border-primary/30 text-xs gap-1">
+                <Crosshair className="h-3 w-3" />
+                Manual
+              </Badge>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight" data-testid="text-focus-industry">
-              Deploying: {focus.industry} — {focus.totalLeads} signals, avg score {focus.avgScore}, +{Math.round(focus.growthRate * 100)}% growth
+              Deploying: {displayIndustry} — {displayLeads} signals, avg score {displayAvgScore}{!isManualOverride && focus ? `, +${Math.round(focus.growthRate * 100)}% growth` : ""}
             </h2>
-            <p className="text-sm text-muted-foreground mt-1" data-testid="text-focus-reason">{focus.reasonSelected}</p>
+            <p className="text-sm text-muted-foreground mt-1" data-testid="text-focus-reason">{displayReason}</p>
           </div>
           <div className="flex items-center gap-3">
-            <Badge variant="outline" className={`text-xs ${painSignalColor(focus.dominantPainSignal)}`}>
-              {focus.dominantPainSignal}
-            </Badge>
-            <div className="flex items-center gap-1.5 text-sm">
-              <Bot className="h-4 w-4 text-primary" />
-              <span data-testid="text-focus-ai-agent">{focus.primaryAIAgentDemand}</span>
-            </div>
+            {displayPainSignal && (
+              <Badge variant="outline" className={`text-xs ${painSignalColor(displayPainSignal)}`}>
+                {displayPainSignal}
+              </Badge>
+            )}
+            {displayAIAgent && (
+              <div className="flex items-center gap-1.5 text-sm">
+                <Bot className="h-4 w-4 text-primary" />
+                <span data-testid="text-focus-ai-agent">{displayAIAgent}</span>
+              </div>
+            )}
           </div>
+          {!isManualOverride && focus && (
+            <p className="text-xs text-muted-foreground italic">
+              Algorithm recommendation — select a different vertical from the Vertical Domination list below to override
+            </p>
+          )}
           <Button onClick={activateVertical} disabled={setFocusMutation.isPending} data-testid="button-activate-vertical">
             <Target className="h-4 w-4 mr-2" />
-            {setFocusMutation.isPending ? "Activating..." : "Activate This Vertical"}
+            {setFocusMutation.isPending ? "Activating..." : `Activate ${displayIndustry}`}
           </Button>
         </CardContent>
       </Card>
@@ -674,6 +714,7 @@ function ClusterRadarPanel() {
 
 function VerticalDominationPanel() {
   const [timeRange, setTimeRange] = useState<string>("all");
+  const { selected, setSelected } = useContext(SelectedVerticalCtx);
 
   const { data: verticals, isLoading } = useQuery<VerticalRank[]>({
     queryKey: ["/api/verticals/rank", timeRange],
@@ -686,6 +727,14 @@ function VerticalDominationPanel() {
   });
 
   const maxPainScore = verticals?.length ? Math.max(...verticals.map((v) => v.totalPainScore)) : 1;
+
+  const handleSelect = (v: VerticalRank) => {
+    if (selected?.industry === v.industry) {
+      setSelected(null);
+    } else {
+      setSelected(v);
+    }
+  };
 
   return (
     <Card>
@@ -728,42 +777,77 @@ function VerticalDominationPanel() {
             ))}
           </div>
         ) : verticals && verticals.length > 0 ? (
-          <div className="space-y-3">
-            {verticals.map((v, idx) => (
-              <div key={v.industry} className="space-y-1.5" data-testid={`vertical-row-${idx}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className="text-xs font-mono text-muted-foreground w-5 text-right flex-shrink-0">
-                      {idx + 1}
-                    </span>
-                    <span className="font-medium text-sm truncate">{v.industry}</span>
-                    {v.countScore5 > 0 && (
-                      <Badge variant="outline" className="text-xs gap-1 flex-shrink-0 border-orange-500/30 text-orange-400">
-                        <Flame className="h-3 w-3" />
-                        {v.countScore5}
+          <div className="space-y-2">
+            {verticals.map((v, idx) => {
+              const isSelected = selected?.industry === v.industry;
+              return (
+                <div
+                  key={v.industry}
+                  className={`group rounded-lg p-2.5 cursor-pointer transition-all duration-200 ${
+                    isSelected
+                      ? "bg-primary/10 border border-primary/30 ring-1 ring-primary/20"
+                      : "border border-transparent hover:bg-muted/70 hover:border-border/50"
+                  }`}
+                  onClick={() => handleSelect(v)}
+                  data-testid={`vertical-row-${idx}`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-xs font-mono text-muted-foreground w-5 text-right flex-shrink-0">
+                        {idx + 1}
+                      </span>
+                      <span className={`font-medium text-sm truncate ${isSelected ? "text-primary" : ""}`}>
+                        {v.industry}
+                      </span>
+                      {isSelected && (
+                        <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px] gap-1 flex-shrink-0" data-testid={`badge-selected-${idx}`}>
+                          <Crosshair className="h-2.5 w-2.5" />
+                          Selected
+                        </Badge>
+                      )}
+                      {v.countScore5 > 0 && (
+                        <Badge variant="outline" className="text-xs gap-1 flex-shrink-0 border-orange-500/30 text-orange-400">
+                          <Flame className="h-3 w-3" />
+                          {v.countScore5}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Badge variant="outline" className={`text-xs ${painSignalColor(v.dominantPainSignal)}`}>
+                        {v.dominantPainSignal}
                       </Badge>
-                    )}
+                      <span className="text-xs text-muted-foreground w-16 text-right">
+                        {v.totalLeads} lead{v.totalLeads !== 1 ? "s" : ""}
+                      </span>
+                      <Button
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className={`h-6 text-[10px] px-2 transition-opacity ${
+                          isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        }`}
+                        onClick={(e) => { e.stopPropagation(); handleSelect(v); }}
+                        data-testid={`button-select-vertical-${idx}`}
+                      >
+                        {isSelected ? "Deselect" : "Select Vertical"}
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Badge variant="outline" className={`text-xs ${painSignalColor(v.dominantPainSignal)}`}>
-                      {v.dominantPainSignal}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground w-16 text-right">
-                      {v.totalLeads} lead{v.totalLeads !== 1 ? "s" : ""}
-                    </span>
+                  <div className="flex items-center gap-2 pl-7 mt-1.5">
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isSelected
+                            ? "bg-gradient-to-r from-primary to-primary"
+                            : "bg-gradient-to-r from-primary/70 to-primary"
+                        }`}
+                        style={{ width: `${(v.totalPainScore / maxPainScore) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-medium w-8 text-right">{v.totalPainScore}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 pl-7">
-                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-500"
-                      style={{ width: `${(v.totalPainScore / maxPainScore) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-medium w-8 text-right">{v.totalPainScore}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -780,6 +864,8 @@ function VerticalDominationPanel() {
 }
 
 export default function Dashboard() {
+  const [selectedVertical, setSelectedVertical] = useState<VerticalRank | null>(null);
+
   const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ["/api/stats"],
   });
@@ -793,6 +879,7 @@ export default function Dashboard() {
   });
 
   return (
+    <SelectedVerticalCtx.Provider value={{ selected: selectedVertical, setSelected: setSelectedVertical }}>
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -919,5 +1006,6 @@ export default function Dashboard() {
         </Card>
       </div>
     </div>
+    </SelectedVerticalCtx.Provider>
   );
 }
