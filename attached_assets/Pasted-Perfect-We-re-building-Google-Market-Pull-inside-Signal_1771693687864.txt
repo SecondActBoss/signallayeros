@@ -1,0 +1,303 @@
+Perfect.
+We’re building Google Market Pull inside SignalLayerOS.
+Internal only.
+Michigan-focused.
+Download → delete.
+
+Below is a clean, copy-paste build prompt for Replit.
+
+⸻
+
+🧱 REPLIT BUILD PROMPT
+
+⸻
+
+Project: Add “Google Market Pull” Feature to SignalLayerOS
+
+We are adding a new internal-only feature to SignalLayerOS called:
+
+Google Market Pull
+
+This tool allows the founder to:
+
+• Input a service category (ex: “Plumber”)
+• Default state = Michigan
+• Pull Google Maps results via DataForSEO
+• Extract websites
+• Discover emails
+• Verify emails
+• Generate downloadable CSV
+• Delete all temporary data after download
+
+This feature is NOT public-facing SaaS.
+It is an internal acquisition tool.
+
+⸻
+
+1️⃣ Frontend Requirements
+
+Add new route:
+
+/google-market-pull
+
+Simple UI:
+
+Form Fields
+   •   Service Category (text input) – required
+   •   State (default = Michigan)
+   •   Minimum Reviews (default = 30)
+   •   Max Results (default = 500)
+
+Button:
+“Generate Leads”
+
+After processing:
+
+Display:
+   •   Total businesses found
+   •   Total websites found
+   •   Total emails discovered
+   •   Total emails verified
+   •   Download CSV button
+
+No database persistence required beyond processing lifecycle.
+
+⸻
+
+2️⃣ Backend Flow Overview
+
+Endpoint:
+
+POST /api/google-market-pull
+
+Step A – Generate Search Queries
+
+Maintain a static JSON list of top ~100 Michigan cities.
+
+For each city:
+
+Create search query:
+{service category} {city} MI
+
+Example:
+“Plumber Detroit MI”
+
+⸻
+
+Step B – DataForSEO Google Maps Pull
+
+Use DataForSEO Local Pack / Google Maps endpoint.
+
+Return:
+   •   business_name
+   •   address
+   •   phone
+   •   website
+   •   rating
+   •   reviews_count
+
+Filter:
+   •   website != null
+   •   reviews_count >= minimum_reviews
+
+Stop once max_results reached.
+
+⸻
+
+Step C – Website Email Extraction
+
+For each website:
+	1.	Fetch homepage HTML
+	2.	Attempt to fetch:
+      •   /contact
+      •   /about
+
+Extract emails using regex:
+
+Standard email regex pattern.
+
+If email found:
+Store candidate emails.
+
+If no email found:
+Proceed to enrichment step.
+
+⸻
+
+Step D – Email Discovery API (Enrichment Layer)
+
+Integrate email discovery provider via environment variables:
+
+Example:
+PROSPEO_API_KEY
+
+Call provider using domain.
+
+Attempt to retrieve:
+   •   generic emails (info@, contact@)
+   •   owner emails
+   •   admin emails
+
+Append discovered emails to candidate list.
+
+⸻
+
+Step E – Email Verification
+
+Integrate verification provider:
+
+Example:
+BOUNCEBAN_API_KEY
+
+Verify each candidate email.
+
+Keep only:
+   •   deliverable
+   •   safe
+
+Discard:
+   •   risky
+   •   invalid
+
+⸻
+
+3️⃣ Data Handling
+
+Use in-memory processing only.
+
+OR temporary array stored during request lifecycle.
+
+DO NOT persist to Supabase.
+
+After CSV generated:
+Clear all data from memory.
+
+No long-term storage.
+
+⸻
+
+4️⃣ CSV Output Format
+
+Generate downloadable CSV with columns:
+   •   Business Name
+   •   City
+   •   Address
+   •   Phone
+   •   Website
+   •   Email
+   •   Reviews
+   •   Rating
+   •   Source Query
+
+Allow direct download via response stream.
+
+OR generate temporary file and auto-delete after 5 minutes.
+
+⸻
+
+5️⃣ Rate Limiting + Safety
+
+To prevent API abuse:
+
+Add basic rate limit:
+Max 1 generation per 10 minutes.
+
+Add basic concurrency control:
+Prevent multiple simultaneous pulls.
+
+⸻
+
+6️⃣ Environment Variables Required
+
+DATAFORSEO_LOGIN
+DATAFORSEO_PASSWORD
+PROSPEO_API_KEY
+BOUNCEBAN_API_KEY
+
+⸻
+
+7️⃣ Technical Notes
+
+• Use async batching to avoid blocking event loop
+• Process cities sequentially to avoid DataForSEO throttling
+• Use timeout handling for website fetch failures
+• Gracefully skip broken domains
+• Log progress server-side for debugging
+
+⸻
+
+8️⃣ UX Flow
+	1.	User submits form
+	2.	Show loading state:
+“Pulling Michigan plumbers…”
+	3.	Show progress counter:
+X businesses processed
+	4.	Once complete:
+Show summary
+Show Download CSV button
+
+After download:
+Optionally show:
+“Data cleared.”
+
+⸻
+
+9️⃣ Future-Proofing
+
+Structure code modularly:
+
+services/
+   •   dataforseoService.ts
+   •   emailExtractor.ts
+   •   enrichmentService.ts
+   •   verificationService.ts
+
+So providers can be swapped later.
+
+⸻
+
+10️⃣ Success Criteria
+
+If user enters:
+
+Service Category: Plumber
+State: Michigan
+Min Reviews: 30
+
+System should return:
+
+200–400 verified plumber emails (depending on yield).
+
+Downloadable CSV.
+
+No data saved permanently.
+
+⸻
+
+Important: Do NOT Over-Engineer
+
+This is an internal founder tool.
+
+No auth changes.
+No billing.
+No public exposure.
+
+Keep it lean.
+
+⸻
+
+End of Build Prompt
+
+⸻
+
+Laura, this is a serious acquisition machine once built.
+
+One more strategic question:
+
+Do you want to limit results to:
+• Top X per city
+• OR pull all available results statewide?
+
+That changes volume and API cost structure.
+
+And we should decide before implementation.
