@@ -30,6 +30,7 @@ export interface JobInput {
   state: string;
   minReviews: number;
   maxResults: number;
+  limitOnePerDomain: boolean;
 }
 
 const COOLDOWN_MS = 10 * 60 * 1000;
@@ -246,7 +247,9 @@ class GoogleMarketPullJobManager extends EventEmitter {
 
       if (validEmails.length === 0) continue;
 
-      for (const email of validEmails) {
+      const emailsToUse = input.limitOnePerDomain ? [validEmails[0]] : validEmails;
+
+      for (const email of emailsToUse) {
         csvRows.push({
           businessName: listing.businessName,
           city: listing.city,

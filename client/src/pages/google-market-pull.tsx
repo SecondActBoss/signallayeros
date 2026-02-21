@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -56,6 +57,7 @@ export default function GoogleMarketPull() {
   const [state, setState] = useState("Michigan");
   const [minReviews, setMinReviews] = useState(30);
   const [maxResults, setMaxResults] = useState(500);
+  const [limitOnePerDomain, setLimitOnePerDomain] = useState(true);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -122,6 +124,7 @@ export default function GoogleMarketPull() {
         state,
         minReviews,
         maxResults,
+        limitOnePerDomain,
       });
 
       connectSSE();
@@ -240,6 +243,18 @@ export default function GoogleMarketPull() {
                   value={maxResults}
                   onChange={(e) => setMaxResults(parseInt(e.target.value) || 500)}
                   data-testid="input-max-results"
+                />
+              </div>
+              <div className="sm:col-span-2 flex items-center justify-between rounded-md border p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="limit-one-per-domain" className="cursor-pointer">Limit 1 result per unique domain</Label>
+                  <p className="text-xs text-muted-foreground">Keeps your list cleaner — one email per business</p>
+                </div>
+                <Switch
+                  id="limit-one-per-domain"
+                  checked={limitOnePerDomain}
+                  onCheckedChange={setLimitOnePerDomain}
+                  data-testid="toggle-limit-one-per-domain"
                 />
               </div>
               <div className="sm:col-span-2 pt-2">

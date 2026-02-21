@@ -1075,6 +1075,7 @@ export async function registerRoutes(
         state: z.string().default("Michigan"),
         minReviews: z.number().default(30),
         maxResults: z.number().default(500),
+        limitOnePerDomain: z.boolean().default(true),
       });
 
       const input = schema.parse(req.body);
