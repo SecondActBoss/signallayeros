@@ -7,6 +7,7 @@ import {
   Upload,
   Layers,
   Building2,
+  MapPin,
 } from "lucide-react";
 import {
   Sidebar,
@@ -51,6 +52,11 @@ const navigationItems = [
     title: "Ingest",
     url: "/ingest",
     icon: Upload,
+  },
+  {
+    title: "Google Market Pull",
+    url: "/google-market-pull",
+    icon: MapPin,
   },
 ];
 

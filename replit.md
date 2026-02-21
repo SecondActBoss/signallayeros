@@ -57,6 +57,7 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
 | `/content` | Content | Insights and weekly content runs |
 | `/prospects` | Prospects | Volume-based vertical list-build outreach engine |
 | `/ingest` | Ingest | Upload research data (JSON or single form) |
+| `/google-market-pull` | GoogleMarketPull | Pull Google Maps listings, extract & verify emails, download CSV |
 
 ## API Endpoints
 
@@ -101,6 +102,17 @@ SignalLayerOS is an internal GTM intelligence system for AgentLayerOS. It helps 
 - `POST /api/prospects/export` - Export prospects to Google Sheets
   - **Body**: `{ "spreadsheetId": "your-sheet-id" }`
   - Columns: companyName, ownerName, email, industry, companySizeEstimate, location, status, source, dateAdded
+
+### Google Market Pull (Internal Acquisition Tool)
+- `POST /api/google-market-pull` - Start a new market pull job
+  - **Body**: `{ "serviceCategory": "Plumber", "state": "Michigan", "minReviews": 30, "maxResults": 500 }`
+  - Rate limited: 1 job per 10 minutes, no concurrent jobs
+  - Returns `{ jobId }` and starts async pipeline
+- `GET /api/google-market-pull/status` - Poll current job status
+- `GET /api/google-market-pull/stream` - SSE endpoint for real-time progress
+- `GET /api/google-market-pull/download` - Download CSV and clear data from memory
+  - **Pipeline**: DataForSEO Maps → Website scraping → Prospeo enrichment → BounceBan verification → CSV
+  - **Required secrets**: DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD, PROSPEO_API_KEY, BOUNCEBAN_API_KEY
 
 ### Vertical Intelligence
 - `GET /api/verticals/rank` - Ranked industries by aggregated pain score
@@ -230,13 +242,22 @@ client/src/
 │   ├── leads.tsx            # Leads view
 │   ├── content.tsx          # Content insights
 │   ├── prospects.tsx        # Prospect list (volume GTM)
-│   └── ingest.tsx           # Data ingestion
+│   ├── ingest.tsx           # Data ingestion
+│   └── google-market-pull.tsx # Google Maps lead gen tool
 └── App.tsx                  # Main app with routing
 
 server/
 ├── routes.ts               # API endpoints
 ├── storage.ts              # In-memory storage
-└── scoring.ts              # Lead scoring + routing logic
+├── scoring.ts              # Lead scoring + routing logic
+└── services/
+    ├── jobManager.ts        # Google Market Pull job orchestration
+    ├── dataforseoService.ts # DataForSEO Google Maps API
+    ├── emailScraper.ts      # Website email extraction
+    ├── prospeoService.ts    # Prospeo email enrichment
+    ├── bouncebanService.ts  # BounceBan email verification
+    ├── csvGenerator.ts      # CSV file generation
+    └── michiganCities.ts    # Static Michigan cities list
 
 shared/
 └── schema.ts               # TypeScript types + Zod schemas

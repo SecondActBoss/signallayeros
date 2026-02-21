@@ -17,6 +17,7 @@ import Leads from "@/pages/leads";
 import Content from "@/pages/content";
 import Ingest from "@/pages/ingest";
 import Prospects from "@/pages/prospects";
+import GoogleMarketPull from "@/pages/google-market-pull";
 
 function Router() {
   return (
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/prospects" component={Prospects} />
       <Route path="/content" component={Content} />
       <Route path="/ingest" component={Ingest} />
+      <Route path="/google-market-pull" component={GoogleMarketPull} />
       <Route component={NotFound} />
     </Switch>
   );

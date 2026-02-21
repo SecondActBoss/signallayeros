@@ -5,6 +5,7 @@ import { scoreAndRouteSignal, generateInsight, generateContentDrafts } from "./s
 import { insertSignalSchema, bulkSignalImportSchema, insertProspectSchema, bulkProspectImportSchema, type ScoredLead, type FocusedVertical } from "@shared/schema";
 import { z } from "zod";
 import { appendToSheet } from "./googleSheets";
+import { jobManager } from "./services/jobManager";
 
 function extractSpreadsheetId(input: string): string {
   const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -1064,6 +1065,74 @@ export async function registerRoutes(
     } catch (error) {
       res.status(500).json({ message: "Failed to ingest content" });
     }
+  });
+
+  // Google Market Pull
+  app.post("/api/google-market-pull", async (req, res) => {
+    try {
+      const schema = z.object({
+        serviceCategory: z.string().min(1),
+        state: z.string().default("Michigan"),
+        minReviews: z.number().default(30),
+        maxResults: z.number().default(500),
+      });
+
+      const input = schema.parse(req.body);
+      const check = jobManager.canStart();
+      if (!check.ok) {
+        res.status(429).json({ message: check.reason });
+        return;
+      }
+
+      const jobId = await jobManager.startJob(input);
+      res.json({ jobId, message: "Job started" });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid input", errors: error.errors });
+      } else {
+        res.status(500).json({ message: error.message || "Failed to start job" });
+      }
+    }
+  });
+
+  app.get("/api/google-market-pull/status", (req, res) => {
+    const status = jobManager.getStatus();
+    const cooldownRemaining = jobManager.getCooldownRemaining();
+    res.json({ ...status, cooldownRemaining });
+  });
+
+  app.get("/api/google-market-pull/stream", (req, res) => {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+
+    const sendUpdate = (status: any) => {
+      res.write(`data: ${JSON.stringify(status)}\n\n`);
+    };
+
+    sendUpdate(jobManager.getStatus());
+    jobManager.on("update", sendUpdate);
+
+    req.on("close", () => {
+      jobManager.removeListener("update", sendUpdate);
+    });
+  });
+
+  app.get("/api/google-market-pull/download", (req, res) => {
+    const status = jobManager.getStatus();
+    if (status.status !== "completed" || !status.csvData) {
+      res.status(400).json({ message: "No CSV data available" });
+      return;
+    }
+
+    const filename = `google-market-pull-${new Date().toISOString().split("T")[0]}.csv`;
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(status.csvData);
+
+    jobManager.clearData();
   });
 
   return httpServer;
