@@ -63,8 +63,12 @@ export async function searchGoogleMaps(
   const results: BusinessListing[] = [];
 
   const task = data?.tasks?.[0];
-  if (task?.status_code !== 20000) {
-    console.error(`DataForSEO task error for "${keyword}":`, task?.status_message || "Unknown error");
+  if (!task) {
+    console.error(`DataForSEO no task returned for "${keyword}". Full response:`, JSON.stringify(data).substring(0, 500));
+    return results;
+  }
+  if (task.status_code !== 20000) {
+    console.error(`DataForSEO task error for "${keyword}": code=${task.status_code} msg="${task.status_message}"`);
     return results;
   }
 
