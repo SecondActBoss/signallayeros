@@ -210,7 +210,12 @@ class GoogleMarketPullJobManager extends EventEmitter {
 
     const allEmails = new Set<string>();
     businessEmails.forEach((emails) => {
-      for (const e of emails) allEmails.add(e);
+      for (const e of emails) {
+        const trimmed = e.trim().toLowerCase();
+        if (trimmed && trimmed.includes("@") && trimmed.includes(".")) {
+          allEmails.add(trimmed);
+        }
+      }
     });
 
     const verifiedEmails = new Set<string>();
