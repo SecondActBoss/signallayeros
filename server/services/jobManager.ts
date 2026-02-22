@@ -20,6 +20,7 @@ export interface JobStatus {
     emailsVerified: number;
   };
   csvData: string | null;
+  rows: CsvRow[] | null;
   error: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -54,6 +55,7 @@ class GoogleMarketPullJobManager extends EventEmitter {
         emailsVerified: 0,
       },
       csvData: null,
+      rows: null,
       error: null,
       startedAt: null,
       completedAt: null,
@@ -61,7 +63,12 @@ class GoogleMarketPullJobManager extends EventEmitter {
   }
 
   getStatus(): JobStatus {
-    return { ...this.currentJob };
+    const { rows, ...rest } = this.currentJob;
+    return { ...rest, rows: null };
+  }
+
+  getRows(): CsvRow[] | null {
+    return this.currentJob.rows;
   }
 
   getCooldownRemaining(): number {
@@ -270,6 +277,7 @@ class GoogleMarketPullJobManager extends EventEmitter {
     }
 
     this.currentJob.csvData = generateCsv(csvRows);
+    this.currentJob.rows = csvRows;
     this.currentJob.status = "completed";
     this.currentJob.message = `Complete! ${csvRows.length} verified leads ready for download.`;
     this.currentJob.completedAt = new Date().toISOString();

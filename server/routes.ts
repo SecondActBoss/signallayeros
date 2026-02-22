@@ -1136,5 +1136,43 @@ export async function registerRoutes(
     jobManager.clearData();
   });
 
+  app.post("/api/google-market-pull/export", async (req, res) => {
+    try {
+      const { spreadsheetId: rawSheetId } = req.body;
+      if (!rawSheetId) {
+        res.status(400).json({ message: "Spreadsheet ID or URL is required" });
+        return;
+      }
+
+      const spreadsheetId = extractSpreadsheetId(rawSheetId);
+      const status = jobManager.getStatus();
+      const rows = jobManager.getRows();
+
+      if (status.status !== "completed" || !rows || rows.length === 0) {
+        res.status(400).json({ message: "No data available to export" });
+        return;
+      }
+
+      const headers = [
+        "Business Name", "City", "Address", "Phone",
+        "Website", "Email", "Reviews", "Rating", "Source Query",
+      ];
+
+      const sheetRows = rows.map((r) => [
+        r.businessName, r.city, r.address, r.phone,
+        r.website, r.email, String(r.reviews), String(r.rating), r.sourceQuery,
+      ]);
+
+      await appendToSheet(spreadsheetId, [headers, ...sheetRows]);
+
+      jobManager.clearData();
+
+      res.json({ exportedCount: rows.length, message: `Exported ${rows.length} leads to Google Sheets. Data cleared.` });
+    } catch (error: any) {
+      console.error("Google Market Pull export error:", error);
+      res.status(500).json({ message: error.message || "Failed to export" });
+    }
+  });
+
   return httpServer;
 }

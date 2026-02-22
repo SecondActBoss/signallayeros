@@ -6,6 +6,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -20,6 +28,7 @@ import {
   Mail,
   ShieldCheck,
   Trash2,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface JobStatus {
@@ -61,6 +70,9 @@ export default function GoogleMarketPull() {
   const [job, setJob] = useState<JobStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [spreadsheetId, setSpreadsheetId] = useState("");
+  const [exporting, setExporting] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const connectSSE = useCallback(() => {
@@ -163,10 +175,30 @@ export default function GoogleMarketPull() {
     }
   };
 
+  const handleExportToSheets = async () => {
+    if (!spreadsheetId.trim()) return;
+    setExporting(true);
+    try {
+      const res = await apiRequest("POST", "/api/google-market-pull/export", {
+        spreadsheetId: spreadsheetId.trim(),
+      });
+      const data = await res.json();
+      toast({ title: data.message || "Exported to Google Sheets!" });
+      setExportDialogOpen(false);
+      setDownloaded(true);
+      setJob((prev) => (prev ? { ...prev, status: "idle", csvData: null } : prev));
+    } catch (err: any) {
+      toast({ title: "Export failed", description: err.message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleReset = () => {
     setJob(null);
     setDownloaded(false);
     setServiceCategory("");
+    setSpreadsheetId("");
   };
 
   const isRunning = job?.status === "running";
@@ -364,14 +396,20 @@ export default function GoogleMarketPull() {
             <Card>
               <CardContent className="pt-6 flex flex-col sm:flex-row gap-3">
                 {!downloaded ? (
-                  <Button onClick={handleDownload} className="flex-1" data-testid="button-download-csv">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV
-                  </Button>
+                  <>
+                    <Button onClick={() => setExportDialogOpen(true)} className="flex-1" data-testid="button-export-sheets">
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Export to Google Sheets
+                    </Button>
+                    <Button variant="outline" onClick={handleDownload} data-testid="button-download-csv">
+                      <Download className="h-4 w-4 mr-2" />
+                      CSV
+                    </Button>
+                  </>
                 ) : (
                   <Badge variant="outline" className="py-2 px-4 text-sm justify-center flex-1">
                     <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
-                    Downloaded — data cleared from memory
+                    Exported — data cleared from memory
                   </Badge>
                 )}
                 <Button variant="outline" onClick={handleReset} data-testid="button-new-pull">
@@ -381,6 +419,51 @@ export default function GoogleMarketPull() {
               </CardContent>
             </Card>
           )}
+
+          <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Export to Google Sheets</DialogTitle>
+                <DialogDescription>
+                  Paste your Google Sheet URL or ID to export the pulled leads.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="gmp-spreadsheet-id">Google Sheet URL or ID</Label>
+                  <Input
+                    id="gmp-spreadsheet-id"
+                    placeholder="Paste Google Sheets URL or spreadsheet ID"
+                    value={spreadsheetId}
+                    onChange={(e) => setSpreadsheetId(e.target.value)}
+                    data-testid="input-gmp-spreadsheet-id"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setExportDialogOpen(false)} data-testid="button-cancel-gmp-export">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleExportToSheets}
+                  disabled={exporting || !spreadsheetId.trim()}
+                  data-testid="button-confirm-gmp-export"
+                >
+                  {exporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Export
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {isError && (
             <Button variant="outline" onClick={handleReset} data-testid="button-try-again">
