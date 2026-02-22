@@ -62,6 +62,10 @@ export async function searchGoogleMaps(
 
   const results: BusinessListing[] = [];
 
+  if (data?.status_code === 40100) {
+    throw new Error("AUTH_FAILED: DataForSEO credentials are invalid. Check DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD.");
+  }
+
   const task = data?.tasks?.[0];
   if (!task) {
     console.error(`DataForSEO no task returned for "${keyword}". Full response:`, JSON.stringify(data).substring(0, 500));
@@ -134,6 +138,9 @@ export async function pullBusinessListings(
 
       await delay(500);
     } catch (err: any) {
+      if (err.message?.startsWith("AUTH_FAILED")) {
+        throw err;
+      }
       console.error(`DataForSEO error for "${query}":`, err.message);
       onProgress?.(`Error searching ${city}, skipping...`, i + 1, cities.length);
     }
