@@ -21,7 +21,6 @@ interface DataForSEOMapItem {
 
 export async function searchGoogleMaps(
   keyword: string,
-  locationName: string,
   onProgress?: (msg: string) => void
 ): Promise<BusinessListing[]> {
   const login = process.env.DATAFORSEO_LOGIN;
@@ -36,7 +35,7 @@ export async function searchGoogleMaps(
   const body = [
     {
       keyword,
-      location_name: locationName,
+      location_code: 2840,
       language_code: "en",
       depth: 100,
     },
@@ -63,8 +62,14 @@ export async function searchGoogleMaps(
 
   const results: BusinessListing[] = [];
 
-  if (data?.tasks?.[0]?.result) {
-    for (const resultSet of data.tasks[0].result) {
+  const task = data?.tasks?.[0];
+  if (task?.status_code !== 20000) {
+    console.error(`DataForSEO task error for "${keyword}":`, task?.status_message || "Unknown error");
+    return results;
+  }
+
+  if (task?.result) {
+    for (const resultSet of task.result) {
       if (resultSet?.items) {
         for (const item of resultSet.items as DataForSEOMapItem[]) {
           const website = item.url || item.domain || "";
@@ -85,6 +90,7 @@ export async function searchGoogleMaps(
     }
   }
 
+  console.log(`DataForSEO "${keyword}": ${results.length} raw results`);
   return results;
 }
 
@@ -108,7 +114,7 @@ export async function pullBusinessListings(
     onProgress?.(`Searching: ${query}`, i + 1, cities.length);
 
     try {
-      const listings = await searchGoogleMaps(query, `${city},${state},United States`);
+      const listings = await searchGoogleMaps(query);
 
       for (const listing of listings) {
         if (allListings.length >= maxResults) break;
