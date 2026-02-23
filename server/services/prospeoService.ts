@@ -1,8 +1,27 @@
+const SEARCH_PERSON_LIMIT = 10;
+const ENRICH_PER_BUSINESS_CAP = 2;
+
+const ROLE_PRIORITY = [
+  "Founder/Owner",
+  "C-Suite",
+  "VP",
+  "Director",
+  "Manager",
+];
+
 export interface ProspeoResult {
   email: string;
   emailStatus: string;
   fullName?: string;
   jobTitle?: string;
+}
+
+export interface ProspeoRunSummary {
+  businessesProcessed: number;
+  contactsFound: number;
+  enrichAttempts: number;
+  verifiedEmailsReturned: number;
+  creditsEstimated: number;
 }
 
 interface SearchPersonResult {
@@ -20,11 +39,64 @@ interface SearchPersonResult {
   };
 }
 
+let currentRunSummary: ProspeoRunSummary = {
+  businessesProcessed: 0,
+  contactsFound: 0,
+  enrichAttempts: 0,
+  verifiedEmailsReturned: 0,
+  creditsEstimated: 0,
+};
+
+export function resetRunSummary(): void {
+  currentRunSummary = {
+    businessesProcessed: 0,
+    contactsFound: 0,
+    enrichAttempts: 0,
+    verifiedEmailsReturned: 0,
+    creditsEstimated: 0,
+  };
+}
+
+export function getRunSummary(): ProspeoRunSummary {
+  return { ...currentRunSummary };
+}
+
+function logRunSummary(): void {
+  const s = currentRunSummary;
+  console.log(`\n=== Prospeo Run Summary ===`);
+  console.log(`  Businesses processed:     ${s.businessesProcessed}`);
+  console.log(`  Contacts found (search):  ${s.contactsFound}`);
+  console.log(`  Enrich attempts:          ${s.enrichAttempts}`);
+  console.log(`  Verified emails returned: ${s.verifiedEmailsReturned}`);
+  console.log(`  Credits estimated:        ${s.creditsEstimated}`);
+  console.log(`===========================\n`);
+}
+
+export { logRunSummary };
+
+function seniorityRank(title: string | undefined): number {
+  if (!title) return ROLE_PRIORITY.length;
+  const lower = title.toLowerCase();
+  for (let i = 0; i < ROLE_PRIORITY.length; i++) {
+    const role = ROLE_PRIORITY[i].toLowerCase();
+    if (lower.includes(role.split("/")[0])) return i;
+  }
+  if (lower.includes("owner")) return 0;
+  if (lower.includes("founder")) return 0;
+  if (lower.includes("ceo") || lower.includes("cfo") || lower.includes("coo") || lower.includes("cto")) return 1;
+  if (lower.includes("vp") || lower.includes("vice president")) return 2;
+  if (lower.includes("director")) return 3;
+  if (lower.includes("manager")) return 4;
+  return ROLE_PRIORITY.length;
+}
+
 export async function findEmailsByDomain(domain: string): Promise<ProspeoResult[]> {
   const apiKey = process.env.PROSPEO_API_KEY;
   if (!apiKey) {
     throw new Error("PROSPEO_API_KEY is required");
   }
+
+  currentRunSummary.businessesProcessed++;
 
   try {
     const searchResponse = await fetch("https://api.prospeo.io/search-person", {
@@ -42,7 +114,7 @@ export async function findEmailsByDomain(domain: string): Promise<ProspeoResult[
             },
           },
           person_seniority: {
-            include: ["Founder/Owner", "C-Suite", "VP", "Director"],
+            include: ROLE_PRIORITY,
           },
         },
       }),
@@ -63,19 +135,27 @@ export async function findEmailsByDomain(domain: string): Promise<ProspeoResult[
       return [];
     }
 
-    const people: SearchPersonResult[] = searchData.results || [];
+    const people: SearchPersonResult[] = (searchData.results || []).slice(0, SEARCH_PERSON_LIMIT);
     if (people.length === 0) {
       return [];
     }
 
-    const results: ProspeoResult[] = [];
-    const maxEnrich = Math.min(people.length, 3);
+    currentRunSummary.contactsFound += people.length;
 
-    for (let i = 0; i < maxEnrich; i++) {
-      const person = people[i].person;
+    people.sort((a, b) => seniorityRank(a.person.current_job_title) - seniorityRank(b.person.current_job_title));
+
+    const results: ProspeoResult[] = [];
+
+    for (const match of people) {
+      if (results.length >= ENRICH_PER_BUSINESS_CAP) break;
+
+      const person = match.person;
       const fullName = person.full_name || `${person.first_name || ""} ${person.last_name || ""}`.trim();
 
       if (!fullName) continue;
+
+      currentRunSummary.enrichAttempts++;
+      currentRunSummary.creditsEstimated++;
 
       try {
         const enrichResponse = await fetch("https://api.prospeo.io/enrich-person", {
@@ -99,13 +179,21 @@ export async function findEmailsByDomain(domain: string): Promise<ProspeoResult[
 
         const enrichData = await enrichResponse.json();
 
-        if (!enrichData.error && enrichData.person?.email) {
+        if (enrichData.error) {
+          if (enrichData.error_code === "NO_MATCH") {
+            currentRunSummary.creditsEstimated--;
+          }
+          continue;
+        }
+
+        if (enrichData.person?.email) {
           results.push({
             email: enrichData.person.email.toLowerCase(),
             emailStatus: "verified",
             fullName: fullName,
             jobTitle: person.current_job_title || undefined,
           });
+          currentRunSummary.verifiedEmailsReturned++;
         }
       } catch {
         // Skip enrichment failures

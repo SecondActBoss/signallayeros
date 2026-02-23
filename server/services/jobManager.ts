@@ -2,7 +2,7 @@ import { EventEmitter } from "events";
 import { MICHIGAN_CITIES } from "./michiganCities";
 import { pullBusinessListings, type BusinessListing } from "./dataforseoService";
 import { scrapeEmailsFromWebsite } from "./emailScraper";
-import { findEmailsByDomain, extractDomain } from "./prospeoService";
+import { findEmailsByDomain, extractDomain, resetRunSummary, logRunSummary } from "./prospeoService";
 import { verifyEmails } from "./bouncebanService";
 import { generateCsv, type CsvRow } from "./csvGenerator";
 
@@ -191,6 +191,7 @@ class GoogleMarketPullJobManager extends EventEmitter {
       .filter(({ idx }) => !businessEmails.has(idx) || businessEmails.get(idx)!.length === 0);
 
     if (needsEnrichment.length > 0 && process.env.PROSPEO_API_KEY) {
+      resetRunSummary();
       this.updateStage("enrich", "Discovering emails via enrichment...", 0, needsEnrichment.length);
 
       for (let i = 0; i < needsEnrichment.length; i++) {
@@ -212,6 +213,7 @@ class GoogleMarketPullJobManager extends EventEmitter {
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
 
+      logRunSummary();
       this.emitUpdate();
     }
 
