@@ -15,7 +15,7 @@ interface DataForSEOMapItem {
   phone?: string;
   url?: string;
   domain?: string;
-  rating?: { value?: number };
+  rating?: { value?: number; votes_count?: number };
   reviews_count?: number;
 }
 
@@ -79,7 +79,7 @@ export async function searchGoogleMaps(
   if (task?.result) {
     for (const resultSet of task.result) {
       if (resultSet?.items) {
-        for (const item of resultSet.items as DataForSEOMapItem[]) {
+        for (const item of resultSet.items) {
           const website = item.url || item.domain || "";
           if (!website) continue;
 
@@ -90,7 +90,7 @@ export async function searchGoogleMaps(
             phone: item.phone || "",
             website: website.startsWith("http") ? website : `https://${website}`,
             rating: item.rating?.value || 0,
-            reviewsCount: item.reviews_count || 0,
+            reviewsCount: item.rating?.votes_count || item.reviews_count || 0,
             sourceQuery: keyword,
           });
         }
@@ -98,7 +98,7 @@ export async function searchGoogleMaps(
     }
   }
 
-  console.log(`DataForSEO "${keyword}": ${results.length} raw results`);
+  console.log(`DataForSEO "${keyword}": ${results.length} results (${results.filter(r => r.reviewsCount >= 30).length} with 30+ reviews)`);
   return results;
 }
 
