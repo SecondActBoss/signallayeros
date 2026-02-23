@@ -1067,6 +1067,31 @@ export async function registerRoutes(
     }
   });
 
+  // Google Market Pull - test credentials
+  app.get("/api/google-market-pull/test-auth", async (req, res) => {
+    const login = process.env.DATAFORSEO_LOGIN;
+    const password = process.env.DATAFORSEO_PASSWORD;
+    if (!login || !password) {
+      res.status(400).json({ ok: false, message: "DATAFORSEO_LOGIN or DATAFORSEO_PASSWORD not set" });
+      return;
+    }
+    try {
+      const cred = Buffer.from(`${login}:${password}`).toString("base64");
+      const response = await fetch("https://api.dataforseo.com/v3/appendix/user_data", {
+        headers: { Authorization: `Basic ${cred}` },
+      });
+      const data = await response.json();
+      if (data?.status_code === 20000) {
+        const money = data?.tasks?.[0]?.result?.[0]?.money;
+        res.json({ ok: true, message: "Credentials valid", balance: money?.balance, currency: money?.currency });
+      } else {
+        res.json({ ok: false, message: data?.status_message || "Auth failed", statusCode: data?.status_code });
+      }
+    } catch (err: any) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
   // Google Market Pull
   app.post("/api/google-market-pull", async (req, res) => {
     try {
