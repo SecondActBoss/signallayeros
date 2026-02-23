@@ -1,13 +1,17 @@
 const SEARCH_PERSON_LIMIT = 10;
 const ENRICH_PER_BUSINESS_CAP = 2;
+const SEARCH_DELAY_MS = 2200;
+const ENRICH_DELAY_MS = 250;
 
-const ROLE_PRIORITY = [
+const SENIORITY_FILTER = [
   "Founder/Owner",
   "C-Suite",
-  "VP",
+  "Vice President",
   "Director",
   "Manager",
 ];
+
+const ROLE_PRIORITY = SENIORITY_FILTER;
 
 export interface ProspeoResult {
   email: string;
@@ -84,7 +88,7 @@ function seniorityRank(title: string | undefined): number {
   if (lower.includes("owner")) return 0;
   if (lower.includes("founder")) return 0;
   if (lower.includes("ceo") || lower.includes("cfo") || lower.includes("coo") || lower.includes("cto")) return 1;
-  if (lower.includes("vp") || lower.includes("vice president")) return 2;
+  if (lower.includes("vice president") || lower.includes("vp")) return 2;
   if (lower.includes("director")) return 3;
   if (lower.includes("manager")) return 4;
   return ROLE_PRIORITY.length;
@@ -114,7 +118,7 @@ export async function findEmailsByDomain(domain: string): Promise<ProspeoResult[
             },
           },
           person_seniority: {
-            include: ROLE_PRIORITY,
+            include: SENIORITY_FILTER,
           },
         },
       }),
@@ -199,7 +203,7 @@ export async function findEmailsByDomain(domain: string): Promise<ProspeoResult[
         // Skip enrichment failures
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, ENRICH_DELAY_MS));
     }
 
     return results;

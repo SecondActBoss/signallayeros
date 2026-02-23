@@ -210,7 +210,7 @@ class GoogleMarketPullJobManager extends EventEmitter {
           // Skip enrichment failures
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 2200));
       }
 
       logRunSummary();
